@@ -2,7 +2,7 @@
 
 ### Prasyarat
 
-Pastikan tools berikut sudah terinstal di mesin kamu:
+Pastikan tools berikut sudah terinstal:
 
 - PHP >= 8.2
 - Composer
