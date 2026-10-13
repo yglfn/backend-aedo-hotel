@@ -8,12 +8,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Maintenance extends Model
 {
+    // "maintenance" is uncountable, so Laravel's pluralizer won't add an "s".
+    // The migration also creates the table as "maintenance".
+    protected $table = 'maintenance';
+
     protected $fillable = [
         'room_id',
         'reported_by',
         'assigned_to',
         'title',
         'description',
+        'priority',
         'status',
         'resolution_notes',
         'resolved_at',

@@ -15,17 +15,17 @@
     <tbody>
         @php $totalAmount = 0; $totalCount = 0; @endphp
         @foreach($report['data'] as $row)
-        @php 
-            $totalAmount += $row->total;
-            $totalCount += $row->count;
+        @php
+        $totalAmount += $row->total;
+        $totalCount += $row->count;
         @endphp
         <tr>
             <td>
                 @php
-                    $methodName = $row->method;
-                    if($methodName == 'cash') $methodName = 'Tunai';
-                    elseif($methodName == 'transfer') $methodName = 'Transfer Bank';
-                    elseif($methodName == 'payment_gateway') $methodName = 'Payment Gateway';
+                $methodName = $row->method;
+                if($methodName == 'cash') $methodName = 'Tunai';
+                elseif($methodName == 'transfer') $methodName = 'Transfer Bank';
+                elseif($methodName == 'payment_gateway') $methodName = 'Payment Gateway';
                 @endphp
                 {{ $methodName }}
             </td>

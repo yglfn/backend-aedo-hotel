@@ -70,8 +70,17 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $userData = $user->toArray();
+        $userData['current_shift'] = $user->currentShift();
+
         return response()->json([
-            'data' => $request->user()->load('currentShift')
+            'data' => $userData
         ]);
     }
 }

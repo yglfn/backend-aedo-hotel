@@ -10,7 +10,9 @@ class CustomerController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Customer::query();
+        $query = Customer::withCount(['bookings' => function ($q) {
+            $q->where('status', '!=', \App\Enums\BookingStatus::Cancelled->value);
+        }]);
         
         if ($request->has('search')) {
             $search = $request->input('search');

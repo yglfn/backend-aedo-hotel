@@ -13,8 +13,9 @@ return new class extends Migration
             $table->foreignId('room_id')->constrained()->onDelete('cascade');
             $table->foreignId('reported_by')->constrained('users')->onDelete('restrict');
             $table->foreignId('assigned_to')->nullable()->constrained('users')->onDelete('set null');
-            $table->string('title');
+            $table->string('title')->nullable();
             $table->text('description');
+            $table->string('priority')->default('medium'); // low|medium|high|critical
             $table->string('status')->default('reported'); // reported|in_progress|resolved
             $table->text('resolution_notes')->nullable();
             $table->timestamp('resolved_at')->nullable();

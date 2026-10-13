@@ -51,10 +51,9 @@ class ShiftController extends Controller
     {
         $shift = $this->shiftService->currentShift($request->user());
 
-        if (!$shift) {
-            return response()->json(['message' => 'Tidak ada shift yang berjalan.'], 404);
-        }
-
-        return response()->json(['data' => $shift]);
+        return response()->json([
+            'data' => $shift,
+            'message' => $shift ? 'Shift aktif ditemukan.' : 'Tidak ada shift yang berjalan.'
+        ]);
     }
 }

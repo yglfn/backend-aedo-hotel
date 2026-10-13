@@ -14,6 +14,7 @@ use App\Enums\BookingStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\RoomStatus;
 use App\Enums\HousekeepingStatus;
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -72,7 +73,20 @@ class BookingService
             $maxPersonCapacity = 0;
             $bookingRoomsData = [];
 
+            $isToday = $checkIn->isToday();
+
             foreach ($lockedRooms as $room) {
+                // Cegah reservasi jika kamar dalam maintenance
+                $statusVal = is_object($room->status) ? $room->status->value : $room->status;
+                if ($statusVal === 'maintenance') {
+                    throw new Exception("Kamar {$room->room_number} sedang dalam perbaikan (maintenance).");
+                }
+
+                // Cegah reservasi untuk hari ini jika kamar saat ini occupied
+                if ($isToday && $statusVal === 'occupied') {
+                    throw new Exception("Kamar {$room->room_number} sedang terisi (occupied) hari ini.");
+                }
+
                 if (!$this->isRoomAvailable($room->id, $data['check_in'], $data['check_out'])) {
                     throw new Exception("Kamar {$room->room_number} tidak tersedia untuk tanggal tersebut.");
                 }
@@ -121,7 +135,12 @@ class BookingService
                 }
             }
 
-            $grandTotal = $totalRoomPrice + $totalServicePrice;
+            $grandSubtotal = $totalRoomPrice + $totalServicePrice;
+            $discount = (float) ($data['discount_amount'] ?? 0);
+            $setting = Setting::first();
+            $taxPct = (float) ($setting?->tax_percentage ?? 0);
+            $taxAmount = ($grandSubtotal - $discount) * $taxPct / 100;
+            $grandTotal = $grandSubtotal - $discount + $taxAmount;
 
             // 3. Simpan Header Booking
             $booking = Booking::create([
@@ -133,6 +152,7 @@ class BookingService
                 'check_in' => $data['check_in'],
                 'check_out' => $data['check_out'],
                 'status' => BookingStatus::Pending->value, // Akan jadi confirmed saat dibayar
+                'discount_amount' => $discount,
                 'total_price' => $grandTotal,
                 'notes' => $data['notes'] ?? null,
             ]);
@@ -168,7 +188,8 @@ class BookingService
      */
     public function checkIn(Booking $booking, int $userId): Booking
     {
-        if (!in_array($booking->status, [BookingStatus::Confirmed->value, BookingStatus::Pending->value])) {
+        $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
+        if (!in_array($statusValue, [BookingStatus::Confirmed->value, BookingStatus::Pending->value])) {
             throw new Exception("Reservasi tidak dalam status yang valid untuk Check-In.");
         }
 
@@ -202,19 +223,23 @@ class BookingService
      */
     public function checkOut(Booking $booking, int $userId): Booking
     {
-        if ($booking->status->value !== BookingStatus::CheckedIn->value) {
+        $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
+        if ($statusValue !== BookingStatus::CheckedOut->value && $statusValue !== BookingStatus::CheckedIn->value) {
             throw new Exception("Hanya reservasi berstatus Checked-In yang bisa Check-Out.");
         }
 
-        // Validasi invoice harus lunas sebelum check-out
+        // Validasi invoice harus lunas sebelum check-out (Aturan bisnis no. 6 AGENTS.md)
         $invoice = $booking->invoice;
-        if ($invoice && $invoice->status !== InvoiceStatus::Paid) {
-            $totalPaid = $booking->getTotalPaidAttribute();
-            $remaining = (float) $invoice->total - $totalPaid;
-            if ($remaining > 0) {
-                throw new Exception(
-                    'Tagihan belum lunas. Sisa pembayaran: Rp ' . number_format($remaining, 0, ',', '.')
-                );
+        if ($invoice) {
+            $invStatus = is_object($invoice->status) ? $invoice->status->value : $invoice->status;
+            if ($invStatus !== InvoiceStatus::Paid->value) {
+                $totalPaid = $booking->getTotalPaidAttribute();
+                $remaining = (float) $invoice->total - $totalPaid;
+                if ($remaining > 0) {
+                    throw new Exception(
+                        'Tagihan belum lunas. Sisa pembayaran: Rp ' . number_format($remaining, 0, ',', '.')
+                    );
+                }
             }
         }
 
@@ -243,6 +268,7 @@ class BookingService
                     'room_id' => $room->id,
                     'status' => HousekeepingStatus::Pending->value,
                     'notes' => 'Pembersihan rutin paska check-out (Booking: ' . $booking->booking_code . ')',
+                    'created_by' => $userId,
                 ]);
             }
 

@@ -87,8 +87,19 @@ class RoomController extends Controller
         ]);
 
         $rooms = Room::with('roomType')->get();
+        $isToday = \Carbon\Carbon::parse($validated['check_in'])->isToday();
         
-        $availableRooms = $rooms->filter(function ($room) use ($validated) {
+        $availableRooms = $rooms->filter(function ($room) use ($validated, $isToday) {
+            // Kamar yang sedang dalam perbaikan (maintenance) tidak boleh direservasi
+            if ($room->status === RoomStatus::Maintenance || (is_object($room->status) && $room->status->value === 'maintenance')) {
+                return false;
+            }
+
+            // Jika check-in hari ini, kamar yang saat ini berstatus occupied tidak boleh dipilih
+            if ($isToday && ($room->status === RoomStatus::Occupied || (is_object($room->status) && $room->status->value === 'occupied'))) {
+                return false;
+            }
+
             return $this->roomService->isAvailable($room->id, $validated['check_in'], $validated['check_out']);
         })->values();
 

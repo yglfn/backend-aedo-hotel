@@ -83,4 +83,26 @@ class PaymentController extends Controller
             ], 422);
         }
     }
+
+    /**
+     * Tolak / batalkan pembayaran pending — admin only.
+     */
+    public function reject(Request $request, Payment $payment)
+    {
+        $request->validate(['reason' => 'nullable|string|max:255']);
+
+        try {
+            $updated = $this->paymentService->reject($payment, $request->user()->id, $request->input('reason'));
+
+            return response()->json([
+                'message' => 'Pembayaran berhasil ditolak.',
+                'data'    => $updated,
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menolak pembayaran.',
+                'error'   => $e->getMessage(),
+            ], 422);
+        }
+    }
 }

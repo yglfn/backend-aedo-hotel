@@ -19,7 +19,7 @@ class PaymentService
     public function __construct(protected InvoiceService $invoiceService) {}
 
     /**
-     * Catat pembayaran manual (tunai/transfer).
+     * Catat pembayaran manual (tunai/transfer/QRIS).
      */
     public function recordManualPayment(Booking $booking, array $data, int $userId): Payment
     {
@@ -35,14 +35,37 @@ class PaymentService
             $method = $data['method'];
             $type   = $data['type'] ?? PaymentType::Final->value;
 
-            // Validasi: total bayar verified tidak boleh melebihi tagihan (kecuali refund)
             if ($type !== PaymentType::Refund->value) {
-                $alreadyPaid = $booking->getTotalPaidAttribute();
-                $remaining   = (float) $invoice->total - $alreadyPaid;
-                if ($amount > $remaining) {
+
+                // GUARD 1 — tolak jika sudah ada pembayaran pending (manual) bertipe sama
+                // Mencegah duplikasi transfer/QRIS saat salah satu masih menunggu verifikasi admin.
+                $existingPending = $booking->payments()
+                    ->where('status', PaymentStatus::Pending->value)
+                    ->where('type', $type)
+                    ->where('method', '!=', PaymentMethod::PaymentGateway->value)
+                    ->exists();
+
+                if ($existingPending) {
+                    $typeLabel = $type === PaymentType::Dp->value ? 'DP' : 'pelunasan';
                     throw new Exception(
-                        'Nominal melebihi sisa tagihan. Sisa: Rp ' .
-                        number_format($remaining, 0, ',', '.')
+                        "Sudah ada pembayaran {$typeLabel} berstatus pending untuk reservasi ini. " .
+                        'Verifikasi atau tolak pembayaran tersebut sebelum mencatat pembayaran baru.'
+                    );
+                }
+
+                // GUARD 2 — gunakan committed total (verified + pending) agar cash
+                // tidak bisa menumpuk di atas transfer/QRIS yang masih pending.
+                $committed = (float) $booking->payments()
+                    ->whereIn('status', [PaymentStatus::Verified->value, PaymentStatus::Pending->value])
+                    ->whereIn('type', [PaymentType::Dp->value, PaymentType::Final->value])
+                    ->sum('amount');
+
+                $availableRemaining = (float) $invoice->total - $committed;
+
+                if ($amount > $availableRemaining) {
+                    throw new Exception(
+                        'Nominal melebihi sisa tagihan (sudah memperhitungkan pembayaran pending). ' .
+                        'Sisa tersedia: Rp ' . number_format(max($availableRemaining, 0), 0, ',', '.')
                     );
                 }
             }
@@ -52,8 +75,8 @@ class PaymentService
                 ->where('status', 'open')
                 ->value('id');
 
-            // Tunai = langsung verified (keputusan: tidak perlu verifikasi admin)
-            // Transfer = pending (menunggu verifikasi admin)
+            // Tunai = langsung verified (tidak perlu verifikasi admin)
+            // Transfer / QRIS manual = pending (menunggu verifikasi admin)
             $isCash     = $method === PaymentMethod::Cash->value;
             $status     = $isCash ? PaymentStatus::Verified->value : PaymentStatus::Pending->value;
             $paidAt     = $isCash ? now() : null;
@@ -74,7 +97,7 @@ class PaymentService
                 'paid_at'          => $paidAt,
             ]);
 
-            // Cek apakah invoice sudah lunas
+            // Cek apakah invoice sudah lunas (hanya hitung verified)
             $this->checkAndMarkInvoicePaid($booking->fresh(), $invoice->fresh());
 
             // Jika booking masih pending dan sudah ada pembayaran verified, konfirmasi otomatis
@@ -125,6 +148,25 @@ class PaymentService
 
             return $payment->fresh(['createdBy', 'verifiedBy']);
         });
+    }
+
+    /**
+     * Tolak / batalkan pembayaran pending (admin only).
+     * Set status → failed agar guard tidak lagi memblokir pencatatan baru.
+     */
+    public function reject(Payment $payment, int $adminId, ?string $reason = null): Payment
+    {
+        if ($payment->status !== PaymentStatus::Pending) {
+            throw new Exception('Hanya pembayaran berstatus Pending yang bisa ditolak.');
+        }
+
+        $payment->update([
+            'status'      => PaymentStatus::Failed->value,
+            'verified_by' => $adminId,
+            'notes'       => ($payment->notes ? $payment->notes . ' | ' : '') . 'Ditolak admin: ' . ($reason ?? 'tanpa alasan'),
+        ]);
+
+        return $payment->fresh(['createdBy', 'verifiedBy']);
     }
 
     /**

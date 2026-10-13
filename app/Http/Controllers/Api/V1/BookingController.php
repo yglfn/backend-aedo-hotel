@@ -21,7 +21,7 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
-        $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests']);
+        $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests', 'payments', 'invoice']);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);

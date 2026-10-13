@@ -14,9 +14,10 @@ use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
-    // Auth
+    // Public routes (Auth login, hotel branding settings)
     Route::post('/auth/login', [AuthController::class, 'login']);
-    
+    Route::get('/settings', [SettingController::class, 'show']);
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
@@ -32,9 +33,8 @@ Route::prefix('v1')->group(function () {
             Route::post('/end', [ShiftController::class, 'end']);
         });
 
-        // Settings (Admin only)
+        // Admin only
         Route::middleware('role:admin')->group(function () {
-            Route::get('/settings', [SettingController::class, 'show']);
             Route::put('/settings', [SettingController::class, 'update']);
             
             // Users CRUD
@@ -77,6 +77,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments/{payment}', [\App\Http\Controllers\Api\V1\PaymentController::class, 'show']);
         Route::post('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'uploadProof']);
         Route::middleware('role:admin')->patch('/payments/{payment}/verify', [\App\Http\Controllers\Api\V1\PaymentController::class, 'verify']);
+        Route::middleware('role:admin')->patch('/payments/{payment}/reject', [\App\Http\Controllers\Api\V1\PaymentController::class, 'reject']);
 
         // Payments (gateway)
         Route::post('/bookings/{booking}/payments/gateway', [\App\Http\Controllers\Api\V1\GatewayPaymentController::class, 'store']);

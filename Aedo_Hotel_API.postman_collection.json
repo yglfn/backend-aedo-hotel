@@ -1,436 +1,948 @@
 {
-    "info": {
-        "_postman_id": "aedo-hotel-api-laragon",
-        "name": "Aedo Hotel Syariah API (Laragon)",
-        "description": "Koleksi Postman untuk testing API Aedo Hotel Syariah dengan autentikasi Sanctum SPA di environment Laragon.",
-        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-    },
-    "item": [
-        {
-            "name": "Auth",
-            "item": [
-                {
-                    "name": "1. Login",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test('Login berhasil (200)', function () {",
-                                    "    pm.response.to.have.status(200);",
-                                    "});",
-                                    "if (pm.response.code === 200) {",
-                                    "    var json = pm.response.json();",
-                                    "    pm.environment.set('auth_token', json.token);",
-                                    "    pm.environment.set('user_id', json.user.id);",
-                                    "    pm.environment.set('user_role', json.user.role);",
-                                    "    console.log('Token saved! Role: ' + json.user.role);",
-                                    "}"
-                                ]
-                            }
-                        }
-                    ],
-                    "request": {
-                        "auth": {
-                            "type": "noauth"
-                        },
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"email\": \"admin@aedohotel.com\",\n    \"password\": \"password123\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/auth/login",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "auth",
-                                "login"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "2. Get Me (Profil)",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/auth/me",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "auth",
-                                "me"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "3. Logout",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/auth/logout",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "auth",
-                                "logout"
-                            ]
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Shifts",
-            "item": [
-                {
-                    "name": "Start Shift",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"note\": \"Mulai shift pagi\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/shifts/start",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "shifts",
-                                "start"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Current Shift",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/shifts/current",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "shifts",
-                                "current"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "End Shift",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"note\": \"Shift pagi selesai, serah terima aman\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/shifts/end",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "shifts",
-                                "end"
-                            ]
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Rooms",
-            "item": [
-                {
-                    "name": "Get Availability",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/rooms/availability?check_in=2024-12-01&check_out=2024-12-03",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "rooms",
-                                "availability"
-                            ],
-                            "query": [
-                                {
-                                    "key": "check_in",
-                                    "value": "2024-12-01"
-                                },
-                                {
-                                    "key": "check_out",
-                                    "value": "2024-12-03"
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "List Rooms",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/rooms",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "rooms"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Change Room Status",
-                    "request": {
-                        "method": "PATCH",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"status\": \"cleaning\",\n    \"reason\": \"Pembersihan rutin\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/rooms/1/status",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "rooms",
-                                "1",
-                                "status"
-                            ]
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Dashboard",
-            "item": [
-                {
-                    "name": "Get Dashboard Stats",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/dashboard",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "dashboard"
-                            ]
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Bookings (Sprint 4)",
-            "item": [
-                {
-                    "name": "List Bookings",
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/bookings",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "bookings"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Create Booking",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"customer_id\": 1,\n    \"source\": \"walk_in\",\n    \"check_in\": \"2026-12-01\",\n    \"check_out\": \"2026-12-03\",\n    \"guest_count\": 2,\n    \"rooms\": [\n        1\n    ],\n    \"guests\": [\n        {\n            \"name\": \"Bapak Budi\",\n            \"is_primary\": true\n        }\n    ],\n    \"notes\": \"Tamu minta kamar non-smoking\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/bookings",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "bookings"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Check In",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/bookings/1/check-in",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "bookings",
-                                "1",
-                                "check-in"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Check Out",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/bookings/1/check-out",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "bookings",
-                                "1",
-                                "check-out"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Cancel Booking",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"cancel_reason\": \"Tamu batal mendadak\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/v1/bookings/1/cancel",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "v1",
-                                "bookings",
-                                "1",
-                                "cancel"
-                            ]
-                        }
-                    }
-                }
-            ]
-        }
-    ],
-    "event": [
-        {
-            "listen": "prerequest",
-            "script": {
-                "type": "text/javascript",
-                "exec": [
-                    "pm.request.headers.add({key: 'Accept', value: 'application/json'});",
-                    "pm.request.headers.add({key: 'Content-Type', value: 'application/json'});"
-                ]
-            }
-        }
-    ],
-    "variable": [
-        {
-            "key": "base_url",
-            "value": "http://backend-aedo-hotel.test",
-            "type": "string"
-        }
-    ],
-    "auth": {
-        "type": "bearer",
-        "bearer": [
-            {
-                "key": "token",
-                "value": "{{auth_token}}",
-                "type": "string"
-            }
+  "info": {
+    "name": "Aedo Hotel Syariah API",
+    "description": "Koleksi lengkap endpoint backend Aedo Hotel Syariah.\nBasis URL: {{base_url}}\n\n**Setup sebelum mulai:**\n1. Jalankan request '00. Init CSRF' terlebih dahulu\n2. Lalu jalankan 'Login sebagai Admin'\n3. Semua request berikutnya sudah otomatis terautentikasi via cookie",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "customer_id", "value": "", "type": "string" },
+    { "key": "room_type_id", "value": "", "type": "string" },
+    { "key": "room_id", "value": "", "type": "string" },
+    { "key": "service_id", "value": "", "type": "string" },
+    { "key": "booking_id", "value": "", "type": "string" },
+    { "key": "invoice_id", "value": "", "type": "string" },
+    { "key": "payment_id", "value": "", "type": "string" },
+    { "key": "shift_id", "value": "", "type": "string" },
+    { "key": "user_id", "value": "", "type": "string" },
+    { "key": "maintenance_id", "value": "", "type": "string" },
+    { "key": "housekeeping_id", "value": "", "type": "string" },
+    { "key": "gateway_transaction_id", "value": "", "type": "string" },
+    { "key": "xsrf_token", "value": "", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Sanctum perlu header Referer agar request dianggap stateful (SPA) dan mengecek session cookie",
+          "pm.request.headers.upsert({",
+          "    key: 'Referer',",
+          "    value: pm.collectionVariables.get('base_url')",
+          "});",
+          "",
+          "// Otomatis sertakan X-XSRF-TOKEN dari cookie ke setiap request",
+          "const jar = pm.cookies.toObject();",
+          "const xsrf = jar['XSRF-TOKEN'] || pm.collectionVariables.get('xsrf_token');",
+          "if (xsrf) {",
+          "    pm.request.headers.upsert({",
+          "        key: 'X-XSRF-TOKEN',",
+          "        value: decodeURIComponent(xsrf)",
+          "    });",
+          "}"
         ]
+      }
     }
+  ],
+  "item": [
+    {
+      "name": "00. Init & Auth",
+      "item": [
+        {
+          "name": "00. Init CSRF Cookie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));",
+                  "// Simpan XSRF-TOKEN ke variable",
+                  "const jar = pm.cookies.toObject();",
+                  "if (jar['XSRF-TOKEN']) {",
+                  "    pm.collectionVariables.set('xsrf_token', jar['XSRF-TOKEN']);",
+                  "    console.log('CSRF token disiapkan');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/sanctum/csrf-cookie", "host": ["{{base_url}}"], "path": ["sanctum", "csrf-cookie"] }
+          }
+        },
+        {
+          "name": "01. Login sebagai Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login berhasil', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "if (res.data) {",
+                  "    pm.collectionVariables.set('user_id', res.data.id);",
+                  "    console.log('Login sebagai:', res.data.name, '| Role:', res.data.role);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@aedohotel.com\",\n  \"password\": \"password\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] }
+          }
+        },
+        {
+          "name": "02. Login sebagai Pegawai",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"pegawai@aedohotel.com\",\n  \"password\": \"password\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] }
+          }
+        },
+        {
+          "name": "03. Me (Profil Login)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/me", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "me"] }
+          }
+        },
+        {
+          "name": "04. Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01. Users",
+      "item": [
+        {
+          "name": "List Semua User",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/users", "host": ["{{base_url}}"], "path": ["api", "v1", "users"] }
+          }
+        },
+        {
+          "name": "Buat User Baru (Pegawai)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('user_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Pegawai Baru\",\n  \"email\": \"pegawai.baru@aedohotel.com\",\n  \"password\": \"password123\",\n  \"role\": \"pegawai\",\n  \"is_active\": true\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/users", "host": ["{{base_url}}"], "path": ["api", "v1", "users"] }
+          }
+        },
+        {
+          "name": "Detail User",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Pegawai Update\",\n  \"email\": \"pegawai.update@aedohotel.com\",\n  \"role\": \"pegawai\",\n  \"is_active\": true\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "Nonaktifkan User",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/users/{{user_id}}/deactivate", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "{{user_id}}", "deactivate"] }
+          }
+        },
+        {
+          "name": "Aktifkan User",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/users/{{user_id}}/activate", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "{{user_id}}", "activate"] }
+          }
+        },
+        {
+          "name": "Reset Password User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"newpassword123\",\n  \"password_confirmation\": \"newpassword123\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/users/{{user_id}}/reset-password", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "{{user_id}}", "reset-password"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Settings",
+      "item": [
+        {
+          "name": "Lihat Pengaturan Hotel",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/settings", "host": ["{{base_url}}"], "path": ["api", "v1", "settings"] }
+          }
+        },
+        {
+          "name": "Update Pengaturan Hotel",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"hotel_name\": \"Aedo Hotel Syariah\",\n  \"hotel_address\": \"Jl. Contoh No. 1, Kota\",\n  \"hotel_phone\": \"0291-123456\",\n  \"hotel_email\": \"info@aedohotel.com\",\n  \"default_check_in\": \"14:00:00\",\n  \"default_check_out\": \"12:00:00\",\n  \"tax_percentage\": 11,\n  \"payment_expiry_minutes\": 60\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/settings", "host": ["{{base_url}}"], "path": ["api", "v1", "settings"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Statistik",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/dashboard", "host": ["{{base_url}}"], "path": ["api", "v1", "dashboard"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Tipe Kamar",
+      "item": [
+        {
+          "name": "List Tipe Kamar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/room-types", "host": ["{{base_url}}"], "path": ["api", "v1", "room-types"] }
+          }
+        },
+        {
+          "name": "Buat Tipe Kamar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('room_type_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deluxe\",\n  \"price\": 350000,\n  \"max_person\": 2,\n  \"facilities\": \"AC, TV 32 inch, WiFi, Kamar Mandi Dalam, Air Panas\",\n  \"description\": \"Kamar deluxe dengan pemandangan taman\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/room-types", "host": ["{{base_url}}"], "path": ["api", "v1", "room-types"] }
+          }
+        },
+        {
+          "name": "Detail Tipe Kamar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/room-types/{{room_type_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "room-types", "{{room_type_id}}"] }
+          }
+        },
+        {
+          "name": "Update Tipe Kamar",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deluxe Updated\",\n  \"price\": 375000,\n  \"max_person\": 2,\n  \"facilities\": \"AC, TV 40 inch, WiFi, Kamar Mandi Dalam, Air Panas, Kulkas\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/room-types/{{room_type_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "room-types", "{{room_type_id}}"] }
+          }
+        },
+        {
+          "name": "Hapus Tipe Kamar (Soft Delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/room-types/{{room_type_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "room-types", "{{room_type_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Kamar",
+      "item": [
+        {
+          "name": "List Semua Kamar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/rooms", "host": ["{{base_url}}"], "path": ["api", "v1", "rooms"] }
+          }
+        },
+        {
+          "name": "Cek Ketersediaan Kamar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rooms/availability?check_in=2026-11-10&check_out=2026-11-12",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rooms", "availability"],
+              "query": [
+                { "key": "check_in", "value": "2026-11-10" },
+                { "key": "check_out", "value": "2026-11-12" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buat Kamar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('room_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"room_type_id\": {{room_type_id}},\n  \"room_number\": \"101\",\n  \"floor\": 1,\n  \"notes\": \"Kamar pojok, view taman\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/rooms", "host": ["{{base_url}}"], "path": ["api", "v1", "rooms"] }
+          }
+        },
+        {
+          "name": "Update Status Kamar",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"maintenance\",\n  \"reason\": \"AC rusak perlu diperbaiki\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/rooms/{{room_id}}/status", "host": ["{{base_url}}"], "path": ["api", "v1", "rooms", "{{room_id}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Layanan Tambahan",
+      "item": [
+        {
+          "name": "List Layanan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/services", "host": ["{{base_url}}"], "path": ["api", "v1", "services"] }
+          }
+        },
+        {
+          "name": "Buat Layanan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('service_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sarapan\",\n  \"price\": 35000,\n  \"unit\": \"orang\",\n  \"description\": \"Sarapan prasmanan\",\n  \"is_active\": true\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/services", "host": ["{{base_url}}"], "path": ["api", "v1", "services"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Pelanggan",
+      "item": [
+        {
+          "name": "List Pelanggan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/customers?search=budi", "host": ["{{base_url}}"], "path": ["api", "v1", "customers"], "query": [{ "key": "search", "value": "budi" }] }
+          }
+        },
+        {
+          "name": "Buat Pelanggan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('customer_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Budi Santoso\",\n  \"phone\": \"081234567890\",\n  \"email\": \"budi@email.com\",\n  \"address\": \"Jl. Merdeka No. 10, Jakarta\",\n  \"ktp\": \"3201010101010001\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/customers", "host": ["{{base_url}}"], "path": ["api", "v1", "customers"] }
+          }
+        },
+        {
+          "name": "Detail Pelanggan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/customers/{{customer_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "customers", "{{customer_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Shift",
+      "item": [
+        {
+          "name": "Mulai Shift",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('shift_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Mulai shift pagi\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/shifts/start", "host": ["{{base_url}}"], "path": ["api", "v1", "shifts", "start"] }
+          }
+        },
+        {
+          "name": "Shift Saat Ini",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/shifts/current", "host": ["{{base_url}}"], "path": ["api", "v1", "shifts", "current"] }
+          }
+        },
+        {
+          "name": "Akhiri Shift",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Shift selesai, tidak ada kendala\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/shifts/end", "host": ["{{base_url}}"], "path": ["api", "v1", "shifts", "end"] }
+          }
+        },
+        {
+          "name": "List Semua Shift (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/shifts", "host": ["{{base_url}}"], "path": ["api", "v1", "shifts"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Reservasi",
+      "item": [
+        {
+          "name": "List Reservasi",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings?status=confirmed",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings"],
+              "query": [{ "key": "status", "value": "confirmed" }]
+            }
+          }
+        },
+        {
+          "name": "Buat Reservasi Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) {",
+                  "    pm.collectionVariables.set('booking_id', res.data.id);",
+                  "    console.log('Booking ID:', res.data.id, '| Status:', res.data.status);",
+                  "    if (res.data.invoice) pm.collectionVariables.set('invoice_id', res.data.invoice.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": {{customer_id}},\n  \"source\": \"walk_in\",\n  \"check_in\": \"2026-11-10\",\n  \"check_out\": \"2026-11-12\",\n  \"guest_count\": 2,\n  \"rooms\": [{{room_id}}],\n  \"guests\": [\n    { \"name\": \"Budi Santoso\", \"ktp\": \"3201010101010001\", \"phone\": \"081234567890\", \"is_primary\": true },\n    { \"name\": \"Siti Rahma\", \"is_primary\": false }\n  ],\n  \"discount_amount\": 0,\n  \"notes\": \"Request kamar jauh dari lift\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/v1/bookings", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings"] }
+          }
+        },
+        {
+          "name": "Detail Reservasi",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}"] }
+          }
+        },
+        {
+          "name": "Tambah Layanan ke Reservasi",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"services\": [\n    { \"service_id\": {{service_id}}, \"quantity\": 2, \"notes\": \"Untuk 2 orang\" }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/services", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "services"] }
+          }
+        },
+        {
+          "name": "Check-In",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/check-in", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "check-in"] }
+          }
+        },
+        {
+          "name": "Check-Out",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/check-out", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "check-out"] }
+          }
+        },
+        {
+          "name": "Batalkan Reservasi",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"cancel_reason\": \"Tamu membatalkan karena ada keperluan mendadak\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/cancel", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "cancel"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Invoice",
+      "item": [
+        {
+          "name": "List Invoice",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/invoices", "host": ["{{base_url}}"], "path": ["api", "v1", "invoices"] }
+          }
+        },
+        {
+          "name": "Detail Invoice",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "invoices", "{{invoice_id}}"] }
+          }
+        },
+        {
+          "name": "Download PDF Invoice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}/pdf", "host": ["{{base_url}}"], "path": ["api", "v1", "invoices", "{{invoice_id}}", "pdf"] }
+          }
+        },
+        {
+          "name": "Recalculate Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}/recalculate", "host": ["{{base_url}}"], "path": ["api", "v1", "invoices", "{{invoice_id}}", "recalculate"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Pembayaran",
+      "item": [
+        {
+          "name": "Catat Pembayaran Tunai",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('payment_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 700000,\n  \"method\": \"cash\",\n  \"type\": \"final\",\n  \"notes\": \"Dibayar tunai saat check-in\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments"] }
+          }
+        },
+        {
+          "name": "Catat Pembayaran Transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('payment_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 350000,\n  \"method\": \"transfer\",\n  \"type\": \"dp\",\n  \"notes\": \"DP transfer BCA\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments"] }
+          }
+        },
+        {
+          "name": "Upload Bukti Transfer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "proof", "type": "file", "src": "", "description": "Pilih file gambar bukti transfer" }]
+            },
+            "url": { "raw": "{{base_url}}/api/v1/payments/{{payment_id}}/proof", "host": ["{{base_url}}"], "path": ["api", "v1", "payments", "{{payment_id}}", "proof"] }
+          }
+        },
+        {
+          "name": "Verifikasi Pembayaran (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/payments/{{payment_id}}/verify", "host": ["{{base_url}}"], "path": ["api", "v1", "payments", "{{payment_id}}", "verify"] }
+          }
+        },
+        {
+          "name": "Detail Pembayaran",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/payments/{{payment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "payments", "{{payment_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Payment Gateway",
+      "item": [
+        {
+          "name": "Buat QRIS Gateway Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "if (res.data) {",
+                  "    pm.collectionVariables.set('payment_id', res.data.id);",
+                  "    pm.collectionVariables.set('gateway_transaction_id', res.data.gateway_transaction_id);",
+                  "    console.log('Transaction ID:', res.data.gateway_transaction_id);",
+                  "    console.log('QR String:', res.payment_info ? res.payment_info.qr_string : '-');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"qris\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
+          }
+        },
+        {
+          "name": "Buat VA Gateway Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"va\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
+          }
+        },
+        {
+          "name": "Simulasi Webhook Bayar Berhasil",
+          "description": "Simulasikan callback dari payment gateway seolah tamu sudah bayar.\nGanti {{gateway_transaction_id}} dengan nilai yang sudah tersimpan.\n\nSignature dihitung: HMAC-SHA256(payload, 'simulator-secret-key-aedo-hotel')",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Hitung HMAC-SHA256 signature untuk simulator",
+                  "const txId = pm.collectionVariables.get('gateway_transaction_id');",
+                  "const payload = JSON.stringify({",
+                  "    transaction_id: txId,",
+                  "    event: 'payment.paid',",
+                  "    status: 'paid'",
+                  "});",
+                  "",
+                  "// Simpan payload ke variable agar bisa dipakai di body",
+                  "pm.collectionVariables.set('webhook_payload', payload);",
+                  "",
+                  "// Hitung HMAC (Postman CryptoJS)",
+                  "const secret = 'simulator-secret-key-aedo-hotel';",
+                  "const signature = CryptoJS.HmacSHA256(payload, secret).toString();",
+                  "pm.collectionVariables.set('webhook_signature', signature);",
+                  "console.log('Payload:', payload);",
+                  "console.log('Signature:', signature);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Webhook diproses', () => {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(['processed', 'skipped']).to.include(res.status);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Simulator-Signature", "value": "{{webhook_signature}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{{webhook_payload}}" },
+            "url": { "raw": "{{base_url}}/api/webhooks/payment-gateway", "host": ["{{base_url}}"], "path": ["api", "webhooks", "payment-gateway"] }
+          }
+        },
+        {
+          "name": "List Log Gateway (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payment-gateway-logs?processed=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "payment-gateway-logs"],
+              "query": [{ "key": "processed", "value": "true" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Housekeeping",
+      "item": [
+        {
+          "name": "List Tugas Housekeeping",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/housekeeping-tasks", "host": ["{{base_url}}"], "path": ["api", "v1", "housekeeping-tasks"] }
+          }
+        },
+        {
+          "name": "Update Status Housekeeping",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"completed\",\n  \"notes\": \"Kamar sudah dibersihkan dan siap digunakan\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/housekeeping-tasks/{{housekeeping_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "housekeeping-tasks", "{{housekeeping_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Maintenance",
+      "item": [
+        {
+          "name": "List Laporan Kerusakan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/maintenance", "host": ["{{base_url}}"], "path": ["api", "v1", "maintenance"] }
+          }
+        },
+        {
+          "name": "Laporkan Kerusakan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data) pm.collectionVariables.set('maintenance_id', res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"room_id\": {{room_id}},\n  \"description\": \"AC tidak dingin, perlu pengecekan freon\",\n  \"priority\": \"medium\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/maintenance", "host": ["{{base_url}}"], "path": ["api", "v1", "maintenance"] }
+          }
+        },
+        {
+          "name": "Update Status Maintenance",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"resolved\",\n  \"notes\": \"Freon sudah diisi, AC berfungsi normal\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/maintenance/{{maintenance_id}}/status", "host": ["{{base_url}}"], "path": ["api", "v1", "maintenance", "{{maintenance_id}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Review",
+      "item": [
+        {
+          "name": "List Semua Review (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reviews", "host": ["{{base_url}}"], "path": ["api", "v1", "reviews"] }
+          }
+        },
+        {
+          "name": "Input Review Tamu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Kamar bersih, pelayanan ramah, akan kembali lagi\"\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/review", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "review"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Laporan",
+      "item": [
+        {
+          "name": "Okupansi (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/occupancy?from=2026-11-01&to=2026-11-30", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "occupancy"], "query": [{ "key": "from", "value": "2026-11-01" }, { "key": "to", "value": "2026-11-30" }] }
+          }
+        },
+        {
+          "name": "Pendapatan (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/revenue?from=2026-11-01&to=2026-11-30", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "revenue"], "query": [{ "key": "from", "value": "2026-11-01" }, { "key": "to", "value": "2026-11-30" }] }
+          }
+        },
+        {
+          "name": "Pendapatan (PDF)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/v1/reports/revenue?from=2026-11-01&to=2026-11-30&format=pdf", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "revenue"], "query": [{ "key": "from", "value": "2026-11-01" }, { "key": "to", "value": "2026-11-30" }, { "key": "format", "value": "pdf" }] }
+          }
+        },
+        {
+          "name": "Transaksi (Excel)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/v1/reports/transactions?from=2026-11-01&to=2026-11-30&format=xlsx", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "transactions"], "query": [{ "key": "from", "value": "2026-11-01" }, { "key": "to", "value": "2026-11-30" }, { "key": "format", "value": "xlsx" }] }
+          }
+        },
+        {
+          "name": "Reservasi (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/reservations", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "reservations"] }
+          }
+        },
+        {
+          "name": "Metode Pembayaran (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/payment-methods", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "payment-methods"] }
+          }
+        },
+        {
+          "name": "Shift (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/shifts", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "shifts"] }
+          }
+        },
+        {
+          "name": "Sumber Reservasi (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/sources", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "sources"] }
+          }
+        },
+        {
+          "name": "Housekeeping (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reports/housekeeping", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "housekeeping"] }
+          }
+        }
+      ]
+    }
+  ]
 }
