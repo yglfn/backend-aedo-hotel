@@ -85,8 +85,9 @@ class PaymentGatewayTest extends TestCase
             'amount'         => $resp->json('data.amount'),
         ]);
 
-        // Buat signature HMAC yang valid
-        $secret    = 'simulator-secret-key-aedo-hotel';
+        // Buat signature HMAC yang valid. Secret dibaca dari config (phpunit.xml mem-pin
+        // nilainya) — bukan hardcode nilai .env developer.
+        $secret    = (string) config('services.pg_simulator.secret');
         $signature = hash_hmac('sha256', $payload, $secret);
 
         $response = $this->postJson('/api/webhooks/payment-gateway', json_decode($payload, true), [
@@ -145,9 +146,10 @@ class PaymentGatewayTest extends TestCase
             'transaction_id' => $transactionId,
             'event'          => 'payment.paid',
             'status'         => 'paid',
+            'amount'         => $resp->json('data.amount'),
         ]);
 
-        $secret    = 'simulator-secret-key-aedo-hotel';
+        $secret    = (string) config('services.pg_simulator.secret');
         $signature = hash_hmac('sha256', $payload, $secret);
         $headers   = ['X-Simulator-Signature' => $signature];
 

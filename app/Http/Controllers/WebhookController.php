@@ -29,9 +29,10 @@ class WebhookController extends Controller
         $result = $this->gatewayService->handleWebhook($rawPayload, $flatHeaders);
 
         return match ($result['status']) {
-            'rejected' => response()->json($result, 401),
-            'error'    => response()->json($result, 500),
-            default    => response()->json($result, 200),
+            'rejected'        => response()->json($result, 401),
+            'amount_mismatch' => response()->json($result, 422),
+            'error'           => response()->json($result, 500),
+            default           => response()->json($result, 200),
         };
     }
 }

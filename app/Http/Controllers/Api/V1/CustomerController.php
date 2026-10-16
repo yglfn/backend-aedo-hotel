@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 
 class CustomerController extends Controller
@@ -14,14 +15,21 @@ class CustomerController extends Controller
             $q->where('status', '!=', \App\Enums\BookingStatus::Cancelled->value);
         }]);
         
-        if ($request->has('search')) {
-            $search = $request->input('search');
-            $query->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+
+            // Dibungkus closure agar operator OR tidak melonggarkan filter lain
+            $query->where(function ($sub) use ($search) {
+                $term = '%' . $search . '%';
+                $sub->where('name', 'like', $term)
+                    ->orWhere('email', 'like', $term)
+                    ->orWhere('phone', 'like', $term);
+            });
         }
-        
-        return response()->json($query->paginate(15));
+
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
+        return response()->json($query->orderByDesc('created_at')->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -57,5 +65,28 @@ class CustomerController extends Controller
         $customer->update($validated);
 
         return response()->json(['data' => $customer, 'message' => 'Customer berhasil diperbarui']);
+    }
+
+    /**
+     * Data tamu hanya boleh dihapus selama belum pernah bertransaksi.
+     * Riwayat tamu harus tetap tersimpan untuk laporan & audit (AGENTS.md bagian 4.2).
+     */
+    public function destroy(Request $request, Customer $customer)
+    {
+        $bookingCount = $customer->bookings()->count();
+
+        if ($bookingCount > 0) {
+            return response()->json([
+                'message' => "Data tamu tidak dapat dihapus karena memiliki {$bookingCount} reservasi. Riwayat tamu harus disimpan untuk laporan dan audit.",
+            ], 422);
+        }
+
+        // Jangan pernah menyalin KTP ke audit log (AGENTS.md bagian 4.3)
+        $oldValues = $customer->only(['name', 'phone', 'email', 'address']);
+        $customer->delete();
+
+        AuditService::log('customer.deleted', $customer, $oldValues, [], $request);
+
+        return response()->json(['message' => 'Data tamu berhasil dihapus']);
     }
 }

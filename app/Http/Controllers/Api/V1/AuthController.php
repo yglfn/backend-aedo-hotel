@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -52,9 +53,13 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        // Revoke current token (jika token-based)
-        if ($request->user()?->currentAccessToken()) {
-            $request->user()->currentAccessToken()->delete();
+        // Cabut token API pribadi bila login memakai bearer token. Untuk SPA (session cookie),
+        // currentAccessToken() mengembalikan TransientToken yang tidak punya delete() —
+        // memanggilnya membuat /auth/logout error 500 dan sesi sebenarnya tidak tertutup.
+        $token = $request->user()?->currentAccessToken();
+
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
         }
 
         // Logout session-based jika ada

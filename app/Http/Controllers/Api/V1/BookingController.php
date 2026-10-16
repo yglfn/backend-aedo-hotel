@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Exceptions\RoomUnavailableException;
 use App\Models\Booking;
 use App\Services\BookingService;
 use App\Http\Requests\StoreBookingRequest;
@@ -21,24 +22,43 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
-        $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests', 'payments', 'invoice']);
-
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
+        // Otomatis sinkronkan pembayaran gateway yang masih pending agar status reservasi mutakhir
+        if (\App\Models\Payment::where('method', \App\Enums\PaymentMethod::PaymentGateway->value)->where('status', \App\Enums\PaymentStatus::Pending->value)->exists()) {
+            try {
+                app(\App\Services\PaymentGateway\PaymentGatewayService::class)->syncPendingPayments();
+            } catch (\Throwable) {}
         }
 
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('booking_code', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function ($q2) use ($search) {
-                      $q2->where('name', 'like', "%{$search}%");
+        $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests', 'payments', 'invoice']);
+
+        // status boleh satu nilai atau daftar terpisah koma (mis. pending,confirmed untuk tab check-in)
+        if ($request->filled('status')) {
+            $statuses = array_values(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                explode(',', (string) $request->input('status'))
+            )));
+
+            if (count($statuses) === 1) {
+                $query->where('status', $statuses[0]);
+            } elseif (count($statuses) > 1) {
+                $query->whereIn('status', $statuses);
+            }
+        }
+
+        if ($request->filled('search')) {
+            $term = '%' . trim((string) $request->input('search')) . '%';
+            $query->where(function ($sub) use ($term) {
+                $sub->where('booking_code', 'like', $term)
+                  ->orWhereHas('customer', function ($customer) use ($term) {
+                      $customer->where('name', 'like', $term);
                   });
             });
         }
 
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
         return response()->json([
-            'data' => $query->latest()->paginate(15)
+            'data' => $query->latest()->paginate($perPage)->appends($request->query())
         ]);
     }
 
@@ -51,6 +71,12 @@ class BookingController extends Controller
                 'message' => 'Reservasi berhasil dibuat.',
                 'data' => $booking
             ], 201);
+        } catch (RoomUnavailableException $e) {
+            // Konflik ketersediaan kamar dibalas 409 (AGENTS.md bagian 6 butir 1)
+            return response()->json([
+                'message' => 'Kamar tidak tersedia pada tanggal tersebut.',
+                'error'   => $e->getMessage(),
+            ], 409);
         } catch (Exception $e) {
             return response()->json([
                 'message' => 'Gagal membuat reservasi.',
@@ -63,6 +89,34 @@ class BookingController extends Controller
     {
         $booking->load(['customer', 'bookingRooms.room.roomType', 'bookingGuests', 'bookingServices.service', 'createdBy']);
         return response()->json(['data' => $booking]);
+    }
+
+    public function confirm(Request $request, Booking $booking)
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ], [
+            'reason.max' => 'Alasan konfirmasi maksimal 255 karakter.',
+        ]);
+
+        try {
+            $updatedBooking = $this->bookingService->confirm(
+                $booking,
+                $request->user()->id,
+                $request->user()->isAdmin(),
+                $validated['reason'] ?? null
+            );
+
+            return response()->json([
+                'message' => 'Reservasi berhasil dikonfirmasi.',
+                'data'    => $updatedBooking,
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Gagal mengonfirmasi reservasi.',
+                'error'   => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function checkIn(Request $request, Booking $booking)

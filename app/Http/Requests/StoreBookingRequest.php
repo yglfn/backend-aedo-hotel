@@ -21,6 +21,8 @@ class StoreBookingRequest extends FormRequest
             'check_in' => ['required', 'date', 'after_or_equal:today'],
             'check_out' => ['required', 'date', 'after:check_in'],
             'guest_count' => ['required', 'integer', 'min:1'],
+            // Diskon manual; nilainya dijaga <= subtotal di BookingService (aturan no. 4)
+            'discount_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'notes' => ['nullable', 'string'],
             
             // Rooms to book
@@ -44,8 +46,12 @@ class StoreBookingRequest extends FormRequest
     {
         return [
             'check_out.after' => 'Tanggal check-out harus setelah tanggal check-in.',
+            'check_in.after_or_equal' => 'Tanggal check-in tidak boleh sebelum hari ini.',
             'rooms.required' => 'Minimal satu kamar harus dipilih.',
             'guests.required' => 'Data tamu wajib diisi.',
+            'guest_count.min' => 'Jumlah tamu minimal 1 orang.',
+            'discount_amount.numeric' => 'Nilai diskon harus berupa angka.',
+            'discount_amount.min' => 'Nilai diskon tidak boleh negatif.',
         ];
     }
 }

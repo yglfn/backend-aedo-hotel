@@ -22,8 +22,23 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <!-- Test WAJIB memakai database terisolasi: setiap feature test memakai
+             RefreshDatabase (migrate:fresh), jadi tanpa override ini data kerja di
+             DB_DATABASE .env akan terhapus. Sekali setup:
+             CREATE DATABASE aedo_hotel_testing CHARACTER SET utf8mb4;
+             Nilai di sini mengalahkan .env karena Dotenv tidak menimpa variabel yang
+             sudah ada. Lihat AGENTS.md bagian 12. -->
+        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_DATABASE" value="aedo_hotel_testing"/>
+        <!-- Payment gateway test juga WAJIB deterministik: tanpa pin ini, test ikut
+             provider yang sedang dipakai developer di .env (mis. midtrans), sehingga
+             test simulator/sandbox gagal bukan karena kode. Test yang butuh midtrans
+             mengatur config(['services.payment_gateway.provider' => ...]) sendiri. -->
+        <env name="PG_PROVIDER" value="simulator"/>
+        <env name="PG_SIMULATOR_SECRET" value="phpunit-simulator-secret"/>
+        <env name="PG_MIDTRANS_SERVER_KEY" value=""/>
+        <env name="PG_MIDTRANS_CLIENT_KEY" value=""/>
+        <env name="PG_MIDTRANS_IS_PRODUCTION" value="false"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

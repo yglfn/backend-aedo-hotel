@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('proof_of_payment')->nullable();
             $table->string('provider')->nullable();
             $table->string('gateway_transaction_id')->nullable();
-            $table->string('channel')->nullable(); // qris/va/ewallet
+            $table->string('channel')->nullable(); // auto/qris/va/ewallet
             $table->json('gateway_payload')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('paid_at')->nullable();

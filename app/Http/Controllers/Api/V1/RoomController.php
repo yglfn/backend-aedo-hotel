@@ -15,9 +15,12 @@ class RoomController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $rooms = Room::with('roomType')->paginate(15);
+        // Papan kamar butuh seluruh kamar sekaligus; default pagination dibuat lebih longgar
+        $perPage = max(1, min((int) $request->input('per_page', 50), 200));
+
+        $rooms = Room::with('roomType')->orderBy('room_number')->paginate($perPage);
         return response()->json($rooms);
     }
 
@@ -25,12 +28,18 @@ class RoomController extends Controller
     {
         $validated = $request->validate([
             'room_type_id' => 'required|exists:room_types,id',
-            'room_number'  => 'required|string|max:255|unique:rooms',
+            'room_number'  => ['required', 'string', 'max:255', Rule::unique('rooms')->whereNull('deleted_at')],
             'floor'        => 'nullable|integer',
+            'status'       => ['nullable', Rule::enum(RoomStatus::class)],
             'notes'        => 'nullable|string',
         ]);
 
+        if (empty($validated['status'])) {
+            $validated['status'] = RoomStatus::Available->value;
+        }
+
         $room = Room::create($validated);
+        $room->load('roomType');
 
         return response()->json(['data' => $room, 'message' => 'Kamar berhasil ditambahkan'], 201);
     }
@@ -45,18 +54,26 @@ class RoomController extends Controller
     {
         $validated = $request->validate([
             'room_type_id' => 'sometimes|exists:room_types,id',
-            'room_number'  => ['sometimes', 'string', 'max:255', Rule::unique('rooms')->ignore($room->id)],
+            'room_number'  => ['sometimes', 'string', 'max:255', Rule::unique('rooms')->ignore($room->id)->whereNull('deleted_at')],
             'floor'        => 'nullable|integer',
+            'status'       => ['nullable', Rule::enum(RoomStatus::class)],
             'notes'        => 'nullable|string',
         ]);
 
         $room->update($validated);
+        $room->load('roomType');
 
         return response()->json(['data' => $room, 'message' => 'Kamar berhasil diperbarui']);
     }
 
     public function destroy(Room $room)
     {
+        if ($room->status === RoomStatus::Occupied) {
+            return response()->json([
+                'message' => 'Kamar sedang terisi (occupied) dan tidak dapat dihapus.'
+            ], 422);
+        }
+
         $room->delete();
         return response()->json(['message' => 'Kamar berhasil dihapus']);
     }

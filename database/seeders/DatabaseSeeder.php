@@ -42,24 +42,30 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // 4. Room Types
-        $standard = RoomType::create([
-            'name' => 'Standard Room',
-            'price' => 350000,
-            'max_person' => 2,
-            'facilities' => 'AC, TV, Queen Bed, WiFi',
-        ]);
-        
-        $deluxe = RoomType::create([
-            'name' => 'Deluxe Room',
-            'price' => 500000,
-            'max_person' => 2,
-            'facilities' => 'AC, Smart TV, King Bed, WiFi, Minibar',
-        ]);
+        // Hanya data awal. Selanjutnya tipe kamar dikelola lewat menu "Tipe Kamar",
+        // jadi memakai updateOrCreate agar seeder ulang tidak menduplikasi data.
+        $standard = RoomType::updateOrCreate(
+            ['name' => 'Standard Room'],
+            [
+                'price' => 350000,
+                'max_person' => 2,
+                'facilities' => 'AC, TV, Queen Bed, WiFi',
+            ]
+        );
+
+        $deluxe = RoomType::updateOrCreate(
+            ['name' => 'Deluxe Room'],
+            [
+                'price' => 500000,
+                'max_person' => 2,
+                'facilities' => 'AC, Smart TV, King Bed, WiFi, Minibar',
+            ]
+        );
 
         // 5. Rooms
-        Room::create(['room_type_id' => $standard->id, 'room_number' => '101', 'floor' => 1]);
-        Room::create(['room_type_id' => $standard->id, 'room_number' => '102', 'floor' => 1]);
-        Room::create(['room_type_id' => $deluxe->id, 'room_number' => '201', 'floor' => 2]);
-        Room::create(['room_type_id' => $deluxe->id, 'room_number' => '202', 'floor' => 2]);
+        Room::updateOrCreate(['room_number' => '101'], ['room_type_id' => $standard->id, 'floor' => 1]);
+        Room::updateOrCreate(['room_number' => '102'], ['room_type_id' => $standard->id, 'floor' => 1]);
+        Room::updateOrCreate(['room_number' => '201'], ['room_type_id' => $deluxe->id, 'floor' => 2]);
+        Room::updateOrCreate(['room_number' => '202'], ['room_type_id' => $deluxe->id, 'floor' => 2]);
     }
 }

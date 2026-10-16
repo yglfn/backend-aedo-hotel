@@ -11,9 +11,12 @@ class EnsureUserIsActive
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->user() && !$request->user()->is_active) {
-            auth()->guard('web')->logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+            // Sesi SPA (Sanctum session) dihapus. Request token (mis. Postman) tidak punya session.
+            if ($request->hasSession()) {
+                auth()->guard('web')->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
 
             return response()->json([
                 'message' => 'Akun Anda tidak aktif. Hubungi administrator.',

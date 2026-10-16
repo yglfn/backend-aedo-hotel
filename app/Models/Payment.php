@@ -44,6 +44,33 @@ class Payment extends Model
         ];
     }
 
+    protected $appends = [
+        'gateway_token',
+        'client_key',
+        'snap_js_url',
+        'redirect_url',
+    ];
+
+    public function getGatewayTokenAttribute(): ?string
+    {
+        return $this->gateway_payload['token'] ?? null;
+    }
+
+    public function getClientKeyAttribute(): ?string
+    {
+        return $this->gateway_payload['client_key'] ?? null;
+    }
+
+    public function getSnapJsUrlAttribute(): ?string
+    {
+        return $this->gateway_payload['snap_js_url'] ?? null;
+    }
+
+    public function getRedirectUrlAttribute(): ?string
+    {
+        return $this->gateway_payload['redirect_url'] ?? null;
+    }
+
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);

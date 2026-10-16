@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\BookingStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
@@ -9,6 +10,7 @@ use App\Enums\PaymentType;
 use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Setting;
 use App\Models\Shift;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -37,19 +39,21 @@ class PaymentService
 
             if ($type !== PaymentType::Refund->value) {
 
-                // GUARD 1 — tolak jika sudah ada pembayaran pending (manual) bertipe sama
-                // Mencegah duplikasi transfer/QRIS saat salah satu masih menunggu verifikasi admin.
-                $existingPending = $booking->payments()
+                // GUARD 1 — satu klaim pembayaran manual dalam satu waktu.
+                // Selama masih ada transfer/QRIS manual menunggu verifikasi admin,
+                // pencatatan pembayaran baru (manual maupun gateway) ditolak supaya tamu
+                // tidak ditagih dua kali untuk uang yang sama.
+                $pendingManual = $booking->payments()
                     ->where('status', PaymentStatus::Pending->value)
-                    ->where('type', $type)
                     ->where('method', '!=', PaymentMethod::PaymentGateway->value)
-                    ->exists();
+                    ->first();
 
-                if ($existingPending) {
-                    $typeLabel = $type === PaymentType::Dp->value ? 'DP' : 'pelunasan';
+                if ($pendingManual) {
                     throw new Exception(
-                        "Sudah ada pembayaran {$typeLabel} berstatus pending untuk reservasi ini. " .
-                        'Verifikasi atau tolak pembayaran tersebut sebelum mencatat pembayaran baru.'
+                        'Masih ada pembayaran menunggu verifikasi admin ('
+                        . ($pendingManual->reference_number ?: 'Payment #' . $pendingManual->id)
+                        . ' sebesar Rp ' . number_format((float) $pendingManual->amount, 0, ',', '.')
+                        . '). Verifikasi atau tolak pembayaran itu sebelum mencatat pembayaran baru.'
                     );
                 }
 
@@ -75,8 +79,8 @@ class PaymentService
                 ->where('status', 'open')
                 ->value('id');
 
-            // Tunai = langsung verified (tidak perlu verifikasi admin)
-            // Transfer / QRIS manual = pending (menunggu verifikasi admin)
+            // Tunai = langsung verified. Transfer / QRIS manual = pending, lalu dicoba
+            // diverifikasi OTOMATIS bila buktinya lengkap (pengganti approval admin).
             $isCash     = $method === PaymentMethod::Cash->value;
             $status     = $isCash ? PaymentStatus::Verified->value : PaymentStatus::Pending->value;
             $paidAt     = $isCash ? now() : null;
@@ -97,16 +101,21 @@ class PaymentService
                 'paid_at'          => $paidAt,
             ]);
 
+            // Transfer/QRIS yang referensinya sudah tercatat lengkap tidak perlu menunggu
+            // admin membuka sistem; kalau belum lengkap tetap pending untuk di-approve.
+            if ($status === PaymentStatus::Pending->value) {
+                $this->autoVerifyIfEligible($payment);
+            }
+
             // Cek apakah invoice sudah lunas (hanya hitung verified)
             $this->checkAndMarkInvoicePaid($booking->fresh(), $invoice->fresh());
 
-            // Jika booking masih pending dan sudah ada pembayaran verified, konfirmasi otomatis
-            $booking->refresh();
-            if ($booking->status->value === 'pending' && $status === PaymentStatus::Verified->value) {
-                $booking->update(['status' => 'confirmed']);
+            // Konfirmasi otomatis dengan SATU aturan ambang DP (lihat helper di bawah)
+            if ($payment->fresh()->status->value === PaymentStatus::Verified->value) {
+                $this->applyAutoConfirmation($booking->fresh(), $invoice->fresh());
             }
 
-            return $payment->load(['createdBy', 'verifiedBy', 'shift']);
+            return $payment->fresh()->load(['createdBy', 'verifiedBy', 'shift']);
         });
     }
 
@@ -117,7 +126,163 @@ class PaymentService
     {
         $path = $file->store('payment-proofs', 'public');
         $payment->update(['proof_of_payment' => $path]);
-        return $payment->fresh();
+
+        $payment = $payment->fresh();
+
+        // Momen bukti tiba adalah momen verifikasi otomatis bekerja
+        $this->autoVerifyIfEligible($payment);
+
+        return $payment->fresh()->load(['createdBy', 'verifiedBy', 'booking']);
+    }
+
+    /**
+     * VERIFIKASI OTOMATIS berbasis bukti — pengganti persetujuan admin di depan.
+     *
+     * Semua syarat harus terpenuhi; kalau ada satu yang kurang pembayaran tetap
+     * pending supaya admin bisa approve/reject seperti sebelumnya.
+     *  - settings.auto_verify_transfers aktif
+     *  - metode transfer / QRIS manual (tunai sudah otomatis, gateway menunggu webhook,
+     *    refund tidak pernah diverifikasi otomatis)
+     *  - nomor referensi diisi DAN belum dipakai pembayaran lain (anti bukti daur ulang)
+     *  - file bukti pembayaran sudah diunggah
+     *  - nominal tidak membuat verified + pending melebihi tagihan
+     *  - nominal tidak melewati plafon auto_verify_max_amount (0 = tanpa plafon)
+     *
+     * verified_by dibiarkan NULL sebagai penanda "sistem", dan setiap keputusan
+     * otomatis ditulis ke audit log supaya masih bisa diaudit/dibatalkan admin.
+     */
+    public function autoVerifyIfEligible(Payment $payment): bool
+    {
+        $setting = Setting::first();
+
+        $isAutoOn     = (bool) ($setting->auto_verify_transfers ?? false);
+        $isManualBank = in_array($payment->method->value ?? $payment->method, [
+            PaymentMethod::Transfer->value,
+            PaymentMethod::Qris->value,
+        ], true);
+        $isDeposit    = in_array($payment->type->value ?? $payment->type, [
+            PaymentType::Dp->value,
+            PaymentType::Final->value,
+        ], true);
+
+        if (!$isAutoOn || $payment->status !== PaymentStatus::Pending || !$isManualBank || !$isDeposit) {
+            return false;
+        }
+
+        $reference = trim((string) $payment->reference_number);
+
+        if ($reference === '' || !$payment->proof_of_payment) {
+            return false;
+        }
+
+        // Satu nomor referensi hanya boleh menjadi bukti satu pembayaran
+        $referenceUsed = Payment::where('reference_number', $reference)
+            ->whereKeyNot($payment->id)
+            ->whereIn('status', [PaymentStatus::Verified->value, PaymentStatus::Pending->value])
+            ->exists();
+
+        if ($referenceUsed) {
+            return false;
+        }
+
+        $ceiling = (float) ($setting->auto_verify_max_amount ?? 0);
+
+        if ($ceiling > 0 && (float) $payment->amount > $ceiling) {
+            return false;
+        }
+
+        $booking = $payment->booking;
+        $invoice = $payment->invoice;
+
+        if (!$booking || !$invoice) {
+            return false;
+        }
+
+        $committedOthers = (float) $booking->payments()
+            ->whereKeyNot($payment->id)
+            ->whereIn('status', [PaymentStatus::Verified->value, PaymentStatus::Pending->value])
+            ->whereIn('type', [PaymentType::Dp->value, PaymentType::Final->value])
+            ->sum('amount');
+
+        if ((float) $payment->amount + $committedOthers > (float) $invoice->total + 0.01) {
+            return false;
+        }
+
+        $payment->update([
+            'status'      => PaymentStatus::Verified->value,
+            'paid_at'     => now(),
+            'verified_by' => null,
+            'notes'       => trim((string) $payment->notes) !== ''
+                ? $payment->notes . ' | Diverifikasi otomatis (bukti + nomor referensi lengkap)'
+                : 'Diverifikasi otomatis (bukti + nomor referensi lengkap)',
+        ]);
+
+        AuditService::log('payment.auto_verified', $payment, ['status' => PaymentStatus::Pending->value], [
+            'status'    => PaymentStatus::Verified->value,
+            'amount'    => (float) $payment->amount,
+            'reference' => $reference,
+        ]);
+
+        $this->checkAndMarkInvoicePaid($booking->fresh(), $invoice->fresh());
+        $this->applyAutoConfirmation($booking->fresh(), $invoice->fresh());
+
+        return true;
+    }
+
+    /**
+     * Reversal (post-audit): admin membatalkan pembayaran yang sudah terverifikasi.
+     * Ini kontrol pengganti "approve di depan": sistem jalan otomatis, manusia mengawasi
+     * pengecualian. Tidak bisa dilakukan bila tamu sudah check-out/dibatalkan.
+     */
+    public function reverse(Payment $payment, int $adminId, string $reason): Payment
+    {
+        if ($payment->status !== PaymentStatus::Verified) {
+            throw new Exception('Hanya pembayaran berstatus verified yang bisa dibatalkan.');
+        }
+
+        $booking = $payment->booking;
+        $bookingStatus = $booking?->status->value ?? null;
+
+        if (in_array($bookingStatus, [BookingStatus::CheckedOut->value, BookingStatus::Cancelled->value], true)) {
+            throw new Exception(
+                'Reservasi sudah selesai/dibatalkan, pembayaran tidak bisa dibatalkan lewat sistem. Gunakan koreksi manual yang tercatat di audit.'
+            );
+        }
+
+        return DB::transaction(function () use ($payment, $adminId, $reason, $booking) {
+            $oldValues = [
+                'status'  => PaymentStatus::Verified->value,
+                'paid_at' => $payment->paid_at?->toDateTimeString(),
+            ];
+
+            $payment->update([
+                'status'      => PaymentStatus::Failed->value,
+                'paid_at'     => null,
+                'verified_by' => $adminId,
+                'notes'       => trim((string) $payment->notes) . ' | Dibatalkan admin: ' . $reason,
+            ]);
+
+            // Bila tagihan jadi kurang bayar, turunkan status invoice dari paid
+            $invoice = $payment->invoice;
+
+            if ($invoice && $invoice->status->value === InvoiceStatus::Paid->value && $booking) {
+                $verifiedTotal = (float) $booking->payments()
+                    ->where('status', PaymentStatus::Verified->value)
+                    ->whereIn('type', [PaymentType::Dp->value, PaymentType::Final->value])
+                    ->sum('amount');
+
+                if ($verifiedTotal < (float) $invoice->total) {
+                    $invoice->update(['status' => InvoiceStatus::Draft->value]);
+                }
+            }
+
+            AuditService::log('payment.reversed', $payment, $oldValues, [
+                'status' => PaymentStatus::Failed->value,
+                'reason' => $reason,
+            ]);
+
+            return $payment->fresh(['createdBy', 'verifiedBy', 'shift']);
+        });
     }
 
     /**
@@ -141,10 +306,16 @@ class PaymentService
 
             $this->checkAndMarkInvoicePaid($booking, $invoice);
 
-            // Konfirmasi booking jika masih pending
-            if ($booking->status->value === 'pending') {
-                $booking->update(['status' => 'confirmed']);
-            }
+            // Verifikasi transfer/QRIS manual juga tunduk ambang DP yang sama
+            $this->applyAutoConfirmation($booking, $invoice);
+
+            // Verifikasi pembayaran = aksi penting, wajib audit log (AGENTS.md bagian 6 butir 10)
+            AuditService::log('payment.verified', $payment, ['status' => PaymentStatus::Pending->value], [
+                'status'     => PaymentStatus::Verified->value,
+                'amount'     => (float) $payment->amount,
+                'booking_id' => $payment->booking_id,
+                'invoice_id' => $payment->invoice_id,
+            ]);
 
             return $payment->fresh(['createdBy', 'verifiedBy']);
         });
@@ -166,13 +337,49 @@ class PaymentService
             'notes'       => ($payment->notes ? $payment->notes . ' | ' : '') . 'Ditolak admin: ' . ($reason ?? 'tanpa alasan'),
         ]);
 
+        AuditService::log('payment.rejected', $payment, ['status' => PaymentStatus::Pending->value], [
+            'status'     => PaymentStatus::Failed->value,
+            'amount'     => (float) $payment->amount,
+            'booking_id' => $payment->booking_id,
+            'reason'     => $reason,
+        ]);
+
         return $payment->fresh(['createdBy', 'verifiedBy']);
     }
 
     /**
-     * Cek apakah total pembayaran verified sudah menutup tagihan invoice.
+     * Naikkan reservasi pending -> confirmed bila pembayaran terverifikasi sudah memenuhi
+     * ambang DP hotel (settings.min_dp_percentage; 0 berarti cukup ada pembayaran masuk).
+     * Aturan ini dipakai SEMUA jalur pembayaran supaya status tidak bergantung pada metode bayar.
+     *
+     * Catatan: jalur gateway juga memanggil aturan ini. Dulu gateway selalu membayar penuh,
+     * sekarang DP (sebagian) bisa dibayar lewat Midtrans, jadi settlement parsial harus tetap
+     * bisa mengonfirmasi reservasi begitu ambang DP tercapai.
      */
-    protected function checkAndMarkInvoicePaid(Booking $booking, Invoice $invoice): void
+    public function applyAutoConfirmation(Booking $booking, Invoice $invoice): void
+    {
+        if (!$booking || $booking->status->value !== BookingStatus::Pending->value) {
+            return;
+        }
+
+        $minDpPct = (float) (Setting::first()?->min_dp_percentage ?? 0);
+        $threshold = $minDpPct > 0 ? round((float) $invoice->total * $minDpPct / 100, 2) : 0.0;
+
+        $paidVerified = (float) $booking->payments()
+            ->where('status', PaymentStatus::Verified->value)
+            ->whereIn('type', [PaymentType::Dp->value, PaymentType::Final->value])
+            ->sum('amount');
+
+        if ($paidVerified >= $threshold && $paidVerified > 0) {
+            $booking->update(['status' => BookingStatus::Confirmed->value]);
+        }
+    }
+
+    /**
+     * Cek apakah total pembayaran verified sudah menutup tagihan invoice.
+     * Public supaya jalur gateway (webhook/sync) memakai rumus yang sama.
+     */
+    public function checkAndMarkInvoicePaid(Booking $booking, Invoice $invoice): void
     {
         $totalPaid = (float) $booking->payments()
             ->where('status', PaymentStatus::Verified->value)

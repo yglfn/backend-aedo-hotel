@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\RoomUnavailableException;
 use App\Models\Booking;
 use App\Models\Room;
 use App\Models\BookingRoom;
@@ -15,6 +16,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\RoomStatus;
 use App\Enums\HousekeepingStatus;
 use App\Models\Setting;
+use App\Services\PaymentGateway\PaymentGatewayService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -22,7 +24,30 @@ use Exception;
 
 class BookingService
 {
-    public function __construct(protected InvoiceService $invoiceService) {}
+    public function __construct(
+        protected InvoiceService $invoiceService,
+        protected PaymentGatewayService $gatewayService
+    ) {}
+
+    /**
+     * Tarik status pembayaran gateway yang sebenarnya untuk reservasi ini, lalu segarkan
+     * model yang dipegang pemanggil supaya guard berikutnya menilai data terbaru.
+     *
+     * Ini yang membuat check-in/check-out ikut sinkron dengan gateway walau webhook tidak
+     * masuk (lokal tanpa tunnel) dan scheduler tidak jalan (tanpa cron).
+     *
+     * @return array{checked: int, changed: int, unavailable: bool}
+     */
+    protected function reconcileGatewayPayments(Booking $booking): array
+    {
+        $result = $this->gatewayService->reconcileBooking($booking);
+
+        if (($result['changed'] ?? 0) > 0) {
+            $booking->refresh();
+        }
+
+        return $result;
+    }
 
     /**
      * Mengecek ketersediaan kamar pada rentang tanggal tertentu.
@@ -79,16 +104,16 @@ class BookingService
                 // Cegah reservasi jika kamar dalam maintenance
                 $statusVal = is_object($room->status) ? $room->status->value : $room->status;
                 if ($statusVal === 'maintenance') {
-                    throw new Exception("Kamar {$room->room_number} sedang dalam perbaikan (maintenance).");
+                    throw new RoomUnavailableException("Kamar {$room->room_number} sedang dalam perbaikan (maintenance).");
                 }
 
                 // Cegah reservasi untuk hari ini jika kamar saat ini occupied
                 if ($isToday && $statusVal === 'occupied') {
-                    throw new Exception("Kamar {$room->room_number} sedang terisi (occupied) hari ini.");
+                    throw new RoomUnavailableException("Kamar {$room->room_number} sedang terisi (occupied) hari ini.");
                 }
 
                 if (!$this->isRoomAvailable($room->id, $data['check_in'], $data['check_out'])) {
-                    throw new Exception("Kamar {$room->room_number} tidak tersedia untuk tanggal tersebut.");
+                    throw new RoomUnavailableException("Kamar {$room->room_number} tidak tersedia untuk tanggal tersebut.");
                 }
 
                 $pricePerNight = $room->roomType->price;
@@ -137,6 +162,15 @@ class BookingService
 
             $grandSubtotal = $totalRoomPrice + $totalServicePrice;
             $discount = (float) ($data['discount_amount'] ?? 0);
+
+            // Aturan bisnis no. 4 (AGENTS.md): diskon manual tidak boleh melebihi subtotal
+            if ($discount > $grandSubtotal) {
+                throw new Exception(
+                    'Diskon tidak boleh melebihi subtotal tagihan (subtotal: Rp '
+                    . number_format($grandSubtotal, 0, ',', '.') . ').'
+                );
+            }
+
             $setting = Setting::first();
             $taxPct = (float) ($setting?->tax_percentage ?? 0);
             $taxAmount = ($grandSubtotal - $discount) * $taxPct / 100;
@@ -179,6 +213,15 @@ class BookingService
             // Otomatis buat invoice draft saat booking baru dibuat
             $this->invoiceService->createForBooking($booking);
 
+            if ($discount > 0) {
+                // Diskon termasuk aksi penting yang wajib dicatat di audit log (bagian 6 butir 10)
+                AuditService::log('booking.discount_applied', $booking, [], [
+                    'discount_amount' => $discount,
+                    'subtotal'        => $grandSubtotal,
+                    'total_price'     => $grandTotal,
+                ]);
+            }
+
             return $booking;
         });
     }
@@ -188,9 +231,20 @@ class BookingService
      */
     public function checkIn(Booking $booking, int $userId): Booking
     {
+        // Uang yang sudah masuk di gateway harus terlihat sebelum guard status menilai
+        $this->reconcileGatewayPayments($booking);
+
         $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
-        if (!in_array($statusValue, [BookingStatus::Confirmed->value, BookingStatus::Pending->value])) {
-            throw new Exception("Reservasi tidak dalam status yang valid untuk Check-In.");
+
+        // Best practice & AGENTS.md bagian 6 butir 5: hanya reservasi `confirmed` yang boleh
+        // check-in. Pembayaran yang masih menunggu verifikasi harus diselesaikan lebih dulu
+        // (verifikasi admin atau POST /bookings/{id}/confirm), bukan ditagih ulang di meja.
+        if ($statusValue !== BookingStatus::Confirmed->value) {
+            throw new Exception(
+                $statusValue === BookingStatus::Pending->value
+                    ? 'Reservasi belum terkonfirmasi. Lunasi/verifikasi pembayaran dulu, atau minta admin mengonfirmasi reservasi.'
+                    : 'Reservasi tidak dalam status yang valid untuk Check-In.'
+            );
         }
 
         return DB::transaction(function () use ($booking, $userId) {
@@ -219,10 +273,55 @@ class BookingService
     }
 
     /**
+     * Konfirmasi manual reservasi: jalur resmi untuk booking Traveloka / kredit hotel
+     * yang dananya tidak lewat sistem. Admin boleh melewati ambang DP minimum;
+     * pegawai harus memenuhinya agar tidak bisa check-in tanpa uang masuk.
+     */
+    public function confirm(Booking $booking, int $userId, bool $isAdmin, ?string $reason = null): Booking
+    {
+        $statusValue = $booking->status instanceof BookingStatus
+            ? $booking->status->value
+            : $booking->status;
+
+        if ($statusValue !== BookingStatus::Pending->value) {
+            throw new Exception('Hanya reservasi berstatus pending yang bisa dikonfirmasi.');
+        }
+
+        $minDpPct = (float) (Setting::first()?->min_dp_percentage ?? 0);
+
+        if ($minDpPct > 0 && !$isAdmin) {
+            $threshold = round($booking->invoice_total * $minDpPct / 100, 2);
+
+            if ($booking->paid_verified < $threshold) {
+                throw new Exception(
+                    'DP terverifikasi belum mencapai minimal '
+                    . rtrim(rtrim(number_format($minDpPct, 2, '.', ''), '0'), '.') . '% tagihan. Butuh Rp '
+                    . number_format($threshold, 0, ',', '.') . ', tercatat Rp '
+                    . number_format($booking->paid_verified, 0, ',', '.') . '.'
+                );
+            }
+        }
+
+        $booking->update(['status' => BookingStatus::Confirmed->value]);
+
+        AuditService::log('booking.confirmed', $booking, ['status' => $statusValue], [
+            'status' => BookingStatus::Confirmed->value,
+            'reason' => $reason,
+            'admin_override' => $isAdmin && $minDpPct > 0 && $booking->paid_verified < round($booking->invoice_total * $minDpPct / 100, 2),
+        ]);
+
+        return $booking->fresh();
+    }
+
+    /**
      * Proses Check-Out
      */
     public function checkOut(Booking $booking, int $userId): Booking
     {
+        // Cek dulu status pembayaran yang sebenarnya di gateway supaya tamu yang sudah bayar
+        // tidak tertahan oleh status pending yang tertinggal
+        $reconciled = $this->reconcileGatewayPayments($booking);
+
         $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
         if ($statusValue !== BookingStatus::CheckedOut->value && $statusValue !== BookingStatus::CheckedIn->value) {
             throw new Exception("Hanya reservasi berstatus Checked-In yang bisa Check-Out.");
@@ -238,6 +337,11 @@ class BookingService
                 if ($remaining > 0) {
                     throw new Exception(
                         'Tagihan belum lunas. Sisa pembayaran: Rp ' . number_format($remaining, 0, ',', '.')
+                        . (($reconciled['unavailable'] ?? false)
+                            ? ' Status payment gateway belum dapat diperiksa — periksa koneksi lalu ulangi.'
+                            : ((($reconciled['checked'] ?? 0) > 0)
+                                ? ' Pembayaran gateway masih menunggu konfirmasi dari provider.'
+                                : ''))
                     );
                 }
             }
@@ -281,27 +385,45 @@ class BookingService
      */
     public function cancel(Booking $booking, string $reason, int $userId): Booking
     {
-        if (in_array($booking->status, [BookingStatus::CheckedIn->value, BookingStatus::CheckedOut->value, BookingStatus::Cancelled->value])) {
-            throw new Exception("Reservasi tidak bisa dibatalkan pada status saat ini.");
+        $statusValue = $booking->status instanceof BookingStatus
+            ? $booking->status->value
+            : $booking->status;
+
+        // Booking yang sudah menginap/selesai/batal tidak boleh dibatalkan lagi
+        // (AGENTS.md bagian 5). Perbandingan dilakukan pada nilai enum, bukan objeknya.
+        if (in_array($statusValue, [
+            BookingStatus::CheckedIn->value,
+            BookingStatus::CheckedOut->value,
+            BookingStatus::Cancelled->value,
+        ], true)) {
+            throw new Exception("Reservasi berstatus {$statusValue} tidak bisa dibatalkan lagi.");
         }
 
-        return DB::transaction(function () use ($booking, $reason, $userId) {
+        return DB::transaction(function () use ($booking, $reason, $userId, $statusValue) {
             $booking->status = BookingStatus::Cancelled->value;
             $booking->cancel_reason = $reason;
             $booking->cancelled_at = now();
             $booking->save();
 
+            // Invoice aktif di-void agar tidak lagi dihitung sebagai piutang (bagian 5)
+            $invoice = $booking->invoice;
+            if ($invoice) {
+                $invoice->update(['status' => InvoiceStatus::Void->value]);
+            }
+
             // Membebaskan kamar jika ada yang sempet berubah status (misal tadinya 'booked')
             $rooms = $booking->rooms()->lockForUpdate()->get();
             foreach ($rooms as $room) {
-                if ($room->status === RoomStatus::Booked->value) {
-                    $oldStatus = $room->status;
+                // Kolom status di-cast ke enum, jadi bandingkan nilainya (bukan objek vs string)
+                $roomStatus = $room->status instanceof RoomStatus ? $room->status->value : $room->status;
+
+                if ($roomStatus === RoomStatus::Booked->value) {
                     $room->status = RoomStatus::Available->value;
                     $room->save();
 
                     RoomStatusLog::create([
                         'room_id' => $room->id,
-                        'from_status' => $oldStatus,
+                        'from_status' => $roomStatus,
                         'to_status' => RoomStatus::Available->value,
                         'changed_by' => $userId,
                         'booking_id' => $booking->id,
@@ -309,6 +431,12 @@ class BookingService
                     ]);
                 }
             }
+
+            // Pembatalan wajib tercatat di audit log (bagian 6 butir 10)
+            AuditService::log('booking.cancelled', $booking, ['status' => $statusValue], [
+                'status'        => BookingStatus::Cancelled->value,
+                'cancel_reason' => $reason,
+            ]);
 
             return $booking;
         });

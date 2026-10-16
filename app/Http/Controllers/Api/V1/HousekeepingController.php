@@ -16,9 +16,15 @@ class HousekeepingController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $tasks = HousekeepingTask::with(['room', 'assignedTo', 'createdBy'])->paginate(15);
+        // Papan kanban menampilkan ketiga kolom sekaligus, jadi perlu lebih dari 15 baris
+        $perPage = max(1, min((int) $request->input('per_page', 50), 200));
+
+        $tasks = HousekeepingTask::with(['room', 'assignedTo', 'createdBy'])
+            ->latest()
+            ->paginate($perPage);
+
         return response()->json($tasks);
     }
 
