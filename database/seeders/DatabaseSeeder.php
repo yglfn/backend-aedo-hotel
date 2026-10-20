@@ -20,7 +20,6 @@ class DatabaseSeeder extends Seeder
             'default_check_in' => '14:00:00',
             'default_check_out' => '12:00:00',
             'tax_percentage' => 11,
-            'payment_expiry_minutes' => 60,
         ]);
 
         // 2. Admin User

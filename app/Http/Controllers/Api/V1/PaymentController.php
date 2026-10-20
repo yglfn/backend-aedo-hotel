@@ -23,13 +23,6 @@ class PaymentController extends Controller
     {
         $perPage = max(1, min((int) $request->input('per_page', 20), 100));
 
-        // Otomatis sinkronkan pembayaran gateway yang masih pending dari provider
-        if (Payment::where('method', \App\Enums\PaymentMethod::PaymentGateway->value)->where('status', \App\Enums\PaymentStatus::Pending->value)->exists()) {
-            try {
-                app(\App\Services\PaymentGateway\PaymentGatewayService::class)->syncPendingPayments();
-            } catch (\Throwable) {}
-        }
-
         $payments = Payment::query()
             ->with([
                 'booking:id,booking_code,customer_id',

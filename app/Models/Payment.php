@@ -22,11 +22,6 @@ class Payment extends Model
         'amount',
         'reference_number',
         'proof_of_payment',
-        'provider',
-        'gateway_transaction_id',
-        'channel',
-        'gateway_payload',
-        'expires_at',
         'paid_at',
         'notes',
     ];
@@ -34,41 +29,12 @@ class Payment extends Model
     protected function casts(): array
     {
         return [
-            'method'          => PaymentMethod::class,
-            'type'            => PaymentType::class,
-            'status'          => PaymentStatus::class,
-            'amount'          => 'decimal:2',
-            'gateway_payload' => 'array',
-            'expires_at'      => 'datetime',
-            'paid_at'         => 'datetime',
+            'method'     => PaymentMethod::class,
+            'type'       => PaymentType::class,
+            'status'     => PaymentStatus::class,
+            'amount'     => 'decimal:2',
+            'paid_at'    => 'datetime',
         ];
-    }
-
-    protected $appends = [
-        'gateway_token',
-        'client_key',
-        'snap_js_url',
-        'redirect_url',
-    ];
-
-    public function getGatewayTokenAttribute(): ?string
-    {
-        return $this->gateway_payload['token'] ?? null;
-    }
-
-    public function getClientKeyAttribute(): ?string
-    {
-        return $this->gateway_payload['client_key'] ?? null;
-    }
-
-    public function getSnapJsUrlAttribute(): ?string
-    {
-        return $this->gateway_payload['snap_js_url'] ?? null;
-    }
-
-    public function getRedirectUrlAttribute(): ?string
-    {
-        return $this->gateway_payload['redirect_url'] ?? null;
     }
 
     public function booking(): BelongsTo

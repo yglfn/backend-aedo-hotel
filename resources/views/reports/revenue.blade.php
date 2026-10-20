@@ -7,8 +7,7 @@
 <div class="summary-box">
     Total Pendapatan: <strong>Rp {{ number_format($report['total_revenue'], 0, ',', '.') }}</strong> ({{ $report['total_transactions'] }} Transaksi) <br>
     <span class="label">Rincian:</span> Tunai: Rp {{ number_format($report['cash_revenue'], 0, ',', '.') }} | 
-    Transfer: Rp {{ number_format($report['transfer_revenue'], 0, ',', '.') }} | 
-    Payment Gateway: Rp {{ number_format($report['gateway_revenue'], 0, ',', '.') }}
+    Transfer: Rp {{ number_format($report['transfer_revenue'], 0, ',', '.') }}
 </div>
 
 <table>

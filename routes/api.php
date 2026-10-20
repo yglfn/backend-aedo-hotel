@@ -109,25 +109,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments/{payment}', [\App\Http\Controllers\Api\V1\PaymentController::class, 'show']);
         Route::post('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'uploadProof']);
 
-        // Cek status ke gateway (semua role) — untuk memulihkan webhook yang tidak masuk
-        Route::post('/payments/{payment}/sync', [\App\Http\Controllers\Api\V1\GatewayPaymentController::class, 'sync']);
-
-        // Sinkron massal payment pending: dipakai saat halaman dibuka supaya status tidak
-        // bergantung pada cron/tunnel. Dibatasi throttle agar tidak membanjiri gateway.
-        Route::post('/payments/sync-pending', [\App\Http\Controllers\Api\V1\GatewayPaymentController::class, 'syncAll'])
-            ->middleware('throttle:6,1');
-
         Route::middleware('shift')->group(function () {
             Route::post('/bookings/{booking}/payments', [\App\Http\Controllers\Api\V1\PaymentController::class, 'store']);
-            Route::post('/bookings/{booking}/payments/gateway', [\App\Http\Controllers\Api\V1\GatewayPaymentController::class, 'store']);
         });
 
         Route::middleware('role:admin')->patch('/payments/{payment}/verify', [\App\Http\Controllers\Api\V1\PaymentController::class, 'verify']);
         Route::middleware('role:admin')->patch('/payments/{payment}/reject', [\App\Http\Controllers\Api\V1\PaymentController::class, 'reject']);
         Route::middleware('role:admin')->post('/payments/{payment}/reverse', [\App\Http\Controllers\Api\V1\PaymentController::class, 'reverse']);
-
-        // Payment Gateway Logs (admin only)
-        Route::middleware('role:admin')->get('/payment-gateway-logs', [\App\Http\Controllers\Api\V1\PaymentGatewayLogController::class, 'index']);
 
         // Reports (admin only)
         Route::middleware('role:admin')->prefix('reports')->group(function () {
@@ -141,11 +129,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/housekeeping', [\App\Http\Controllers\Api\V1\ReportController::class, 'housekeeping']);
         });
 
-        // Sandbox untuk tombol demo di aplikasi (staf login, non-produksi saja).
-        // Secret sandbox tetap tidak pernah dikirim ke browser.
-        Route::post('/sandbox/gateway/{transactionId}/pay', [\App\Http\Controllers\Api\V1\GatewaySandboxController::class, 'pay'])
-            ->middleware('throttle:30,1');
-
         // Housekeeping
         Route::get('/housekeeping-tasks', [HousekeepingController::class, 'index']);
         Route::patch('/housekeeping-tasks/{housekeepingTask}', [HousekeepingController::class, 'update']);
@@ -155,21 +138,3 @@ Route::prefix('v1')->group(function () {
         Route::patch('/maintenance/{maintenance}/status', [MaintenanceController::class, 'updateStatus']);
     });
 });
-
-// Webhook — PUBLIK, tanpa auth, tanpa CSRF
-// Di api.php, prefix /api sudah otomatis dari bootstrap/app.php
-// URL akhir: POST /api/webhooks/payment-gateway
-Route::post('/webhooks/payment-gateway', [\App\Http\Controllers\WebhookController::class, 'handlePaymentGateway']);
-
-// Halaman hasil pembayaran (dituju callbacks.finish Midtrans) — PUBLIK, tanpa login,
-// karena yang membuka adalah browser tamu. Order id acak 16 karakter; diperketat dengan
-// throttle + pola karakter. Status tetap diverifikasi ke gateway, bukan dari URL.
-Route::get('/payment-result/{orderId}', [\App\Http\Controllers\PaymentResultController::class, 'show'])
-    ->middleware('throttle:20,1')
-    ->where('orderId', '[A-Za-z0-9_.\-]{1,64}');
-
-// SANDBOX payment gateway — URL akhir: POST /api/sandbox/gateway/{transactionId}/pay
-// Non-produksi saja + wajib X-Sandbox-Token, dan kerjanya cuma mengirim webhook
-// bertanda tangan sah ke jalur provider asli (bukan mengubah status langsung).
-Route::post('/sandbox/gateway/{transactionId}/pay', [\App\Http\Controllers\Api\V1\GatewaySandboxController::class, 'pay'])
-    ->middleware('throttle:30,1');

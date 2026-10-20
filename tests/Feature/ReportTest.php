@@ -82,7 +82,7 @@ class ReportTest extends TestCase
                  ->assertJsonStructure([
                      'data' => [
                          'period', 'total_revenue', 'total_transactions',
-                         'cash_revenue', 'transfer_revenue', 'gateway_revenue', 'daily',
+                         'cash_revenue', 'transfer_revenue', 'daily',
                      ],
                  ]);
 

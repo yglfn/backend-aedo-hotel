@@ -20,13 +20,6 @@ class DashboardController extends Controller
         // Pakai helper model agar admin benar-benar mendapat tampilan admin.
         $isAdmin = $user?->isAdmin() ?? false;
 
-        // Otomatis sinkronkan pembayaran gateway yang masih pending agar statistik keuangan mutakhir
-        if (Payment::where('method', \App\Enums\PaymentMethod::PaymentGateway->value)->where('status', PaymentStatus::Pending->value)->exists()) {
-            try {
-                app(\App\Services\PaymentGateway\PaymentGatewayService::class)->syncPendingPayments();
-            } catch (\Throwable) {}
-        }
-
         // 1. Kamar
         $availableRooms = Room::where('status', 'available')->count();
         $occupiedRooms = Room::where('status', 'occupied')->count();

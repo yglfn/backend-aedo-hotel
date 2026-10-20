@@ -14,7 +14,6 @@ use App\Models\RoomType;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -67,50 +66,32 @@ class SystemHardeningTest extends TestCase
         ];
     }
 
-    public function test_public_settings_never_expose_gateway_credentials(): void
+    public function test_public_settings_only_expose_branding_and_business_fields(): void
     {
         $response = $this->getJson('/api/v1/settings')->assertStatus(200);
 
         $data = $response->json('data');
         $this->assertArrayHasKey('hotel_name', $data);
         $this->assertArrayHasKey('tax_percentage', $data);
-        $this->assertArrayNotHasKey('payment_gateway_config', $data);
-    }
 
-    public function test_gateway_config_is_stored_encrypted_and_write_only(): void
-    {
-        $this->actingAs($this->admin)->putJson('/api/v1/settings', [
-            'hotel_name'               => 'Aedo Hotel Syariah',
-            'default_check_in'         => '14:00:00',
-            'default_check_out'        => '12:00:00',
-            'tax_percentage'           => 11,
-            'payment_expiry_minutes'   => 60,
-            'payment_gateway_provider' => 'simulator',
-            'payment_gateway_config'   => ['api_key' => 'SECRET-ABC123'],
-        ])->assertStatus(200)->assertJsonMissingPath('data.payment_gateway_config');
-
-        // Di database tidak boleh ada secret terbaca
-        $raw = DB::table('settings')->value('payment_gateway_config');
-        $this->assertStringNotContainsString('SECRET-ABC123', (string) $raw);
-
-        // Tapi model tetap bisa membacanya (cast encrypted:array)
-        $this->assertSame(
-            ['api_key' => 'SECRET-ABC123'],
-            \App\Models\Setting::first()->payment_gateway_config
+        // Endpoint ini tanpa autentikasi: tidak boleh ada kredensial apa pun yang ikut terkirim.
+        $leaked = array_filter(
+            array_keys($data),
+            fn (string $key) => str_contains($key, 'secret')
+                || str_contains($key, 'key')
+                || str_contains($key, 'password')
+                || str_contains($key, 'token')
         );
-
-        // Respons publik tetap bersih
-        $this->getJson('/api/v1/settings')->assertJsonMissingPath('data.payment_gateway_config');
+        $this->assertSame([], $leaked, 'Respons publik membawa field kredensial: ' . implode(',', $leaked));
     }
 
     public function test_settings_change_is_audit_logged(): void
     {
         $this->actingAs($this->admin)->putJson('/api/v1/settings', [
-            'hotel_name'             => 'Aedo Hotel Syariah',
-            'default_check_in'       => '14:00:00',
-            'default_check_out'      => '12:00:00',
-            'tax_percentage'         => 12,
-            'payment_expiry_minutes' => 45,
+            'hotel_name'        => 'Aedo Hotel Syariah',
+            'default_check_in'  => '14:00:00',
+            'default_check_out' => '12:00:00',
+            'tax_percentage'    => 12,
         ])->assertStatus(200);
 
         $this->assertDatabaseHas('audit_logs', [

@@ -39,13 +39,12 @@ class PaymentService
 
             if ($type !== PaymentType::Refund->value) {
 
-                // GUARD 1 — satu klaim pembayaran manual dalam satu waktu.
-                // Selama masih ada transfer/QRIS manual menunggu verifikasi admin,
-                // pencatatan pembayaran baru (manual maupun gateway) ditolak supaya tamu
+                // GUARD 1 — satu klaim pembayaran dalam satu waktu.
+                // Selama masih ada transfer/QRIS menunggu verifikasi admin,
+                // pencatatan pembayaran baru ditolak supaya tamu
                 // tidak ditagih dua kali untuk uang yang sama.
                 $pendingManual = $booking->payments()
                     ->where('status', PaymentStatus::Pending->value)
-                    ->where('method', '!=', PaymentMethod::PaymentGateway->value)
                     ->first();
 
                 if ($pendingManual) {
@@ -141,8 +140,7 @@ class PaymentService
      * Semua syarat harus terpenuhi; kalau ada satu yang kurang pembayaran tetap
      * pending supaya admin bisa approve/reject seperti sebelumnya.
      *  - settings.auto_verify_transfers aktif
-     *  - metode transfer / QRIS manual (tunai sudah otomatis, gateway menunggu webhook,
-     *    refund tidak pernah diverifikasi otomatis)
+     *  - metode transfer / QRIS (tunai sudah otomatis, refund tidak pernah diverifikasi otomatis)
      *  - nomor referensi diisi DAN belum dipakai pembayaran lain (anti bukti daur ulang)
      *  - file bukti pembayaran sudah diunggah
      *  - nominal tidak membuat verified + pending melebihi tagihan
@@ -351,10 +349,6 @@ class PaymentService
      * Naikkan reservasi pending -> confirmed bila pembayaran terverifikasi sudah memenuhi
      * ambang DP hotel (settings.min_dp_percentage; 0 berarti cukup ada pembayaran masuk).
      * Aturan ini dipakai SEMUA jalur pembayaran supaya status tidak bergantung pada metode bayar.
-     *
-     * Catatan: jalur gateway juga memanggil aturan ini. Dulu gateway selalu membayar penuh,
-     * sekarang DP (sebagian) bisa dibayar lewat Midtrans, jadi settlement parsial harus tetap
-     * bisa mengonfirmasi reservasi begitu ambang DP tercapai.
      */
     public function applyAutoConfirmation(Booking $booking, Invoice $invoice): void
     {
@@ -377,7 +371,6 @@ class PaymentService
 
     /**
      * Cek apakah total pembayaran verified sudah menutup tagihan invoice.
-     * Public supaya jalur gateway (webhook/sync) memakai rumus yang sama.
      */
     public function checkAndMarkInvoicePaid(Booking $booking, Invoice $invoice): void
     {

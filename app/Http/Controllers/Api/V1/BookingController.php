@@ -22,13 +22,6 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
-        // Otomatis sinkronkan pembayaran gateway yang masih pending agar status reservasi mutakhir
-        if (\App\Models\Payment::where('method', \App\Enums\PaymentMethod::PaymentGateway->value)->where('status', \App\Enums\PaymentStatus::Pending->value)->exists()) {
-            try {
-                app(\App\Services\PaymentGateway\PaymentGatewayService::class)->syncPendingPayments();
-            } catch (\Throwable) {}
-        }
-
         $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests', 'payments', 'invoice']);
 
         // status boleh satu nilai atau daftar terpisah koma (mis. pending,confirmed untuk tab check-in)

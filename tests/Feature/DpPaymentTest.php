@@ -16,7 +16,6 @@ use App\Models\RoomType;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -24,16 +23,14 @@ use Tests\TestCase;
  *
  * Yang dijaga di sini:
  *  - ambang DP dihitung di SATU tempat (Booking) dan dipakai backend maupun frontend;
- *  - gateway boleh menagih SEBAGIAN (DP), tidak selalu seluruh sisa tagihan;
+ *  - DP boleh dibayar SEBAGIAN, tidak selalu seluruh sisa tagihan;
  *  - DP terverifikasi mengonfirmasi reservasi walau invoice belum lunas;
- *  - nominal tidak bisa melewati sisa tagihan, dan tidak ada dua tautan bayar hidup
- *    sekaligus untuk tagihan yang sama.
+ *  - nominal tidak bisa melewati sisa tagihan, dan tidak ada dua klaim pembayaran
+ *    hidup sekaligus untuk tagihan yang sama.
  */
 class DpPaymentTest extends TestCase
 {
     use RefreshDatabase;
-
-    private const SERVER_KEY = 'SB-Mid-server-dp-testkey';
 
     protected User $admin;
     protected Booking $booking;
@@ -47,14 +44,6 @@ class DpPaymentTest extends TestCase
         $this->artisan('db:seed');
 
         $this->admin = User::where('role', UserRole::Admin->value)->first();
-
-        config([
-            'services.payment_gateway.provider' => 'midtrans',
-            'services.midtrans.server_key'      => self::SERVER_KEY,
-            'services.midtrans.client_key'      => 'Mid-client-dp-testkey',
-            'services.midtrans.signature_key'   => '',
-            'services.midtrans.is_production'   => false,
-        ]);
 
         $customer = Customer::create(['name' => 'Tamu DP', 'phone' => '081238880001', 'email' => 'dp@uji.test']);
         $roomType = RoomType::create(['name' => 'DP Room', 'price' => 300000, 'max_person' => 2]);
@@ -82,45 +71,14 @@ class DpPaymentTest extends TestCase
         Setting::first()->update(['min_dp_percentage' => $percent]);
     }
 
-    /** Halaman Snap selalu berhasil; order id acak seperti gateway asli. */
-    protected function fakeSnapCreate(): void
-    {
-        Http::fake([
-            '*/snap/v1/transactions' => Http::response([
-                'token'        => 'tok-dp-' . strtolower(bin2hex(random_bytes(4))),
-                'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v4/redirection/tok-dp',
-            ], 200),
-        ]);
-    }
-
-    protected function requestGateway(array $body): \Illuminate\Testing\TestResponse
+    /**
+     * Catat pembayaran lewat jalur meja (tunai langsung terverifikasi,
+     * transfer/QRIS menunggu verifikasi admin).
+     */
+    protected function pay(array $body): \Illuminate\Testing\TestResponse
     {
         return $this->actingAs($this->admin)
-            ->postJson("/api/v1/bookings/{$this->booking->id}/payments/gateway", $body);
-    }
-
-    /** Notifikasi Midtrans untuk order id payment tertentu. */
-    protected function settlement(Payment $payment, float $amount): array
-    {
-        $orderId = (string) $payment->gateway_transaction_id;
-
-        $body = [
-            'transaction_id'     => 'A120261016000000DpTest' . $payment->id,
-            'order_id'           => $orderId,
-            'gross_amount'       => number_format($amount, 2, '.', ''),
-            'currency'           => 'IDR',
-            'payment_type'       => 'dana',
-            'transaction_status' => 'settlement',
-            'status_code'        => '200',
-            'fraud_status'       => 'accept',
-        ];
-
-        $body['signature_key'] = hash(
-            'sha512',
-            $orderId . '200' . $body['gross_amount'] . self::SERVER_KEY
-        );
-
-        return $body;
+            ->postJson("/api/v1/bookings/{$this->booking->id}/payments", $body);
     }
 
     // ----------------------------------------------------------------- ambang DP
@@ -144,8 +102,8 @@ class DpPaymentTest extends TestCase
     }
 
     /**
-     * Layar reservasi membaca ambang DP dari /api/v1/settings untuk menampilkan tombol
-     * "DP x%". Field ini hilang dari daftar baca publik = DP tidak pernah ditawarkan,
+     * Layar reservasi membaca ambang DP dari /api/v1/settings untuk menampilkan besarnya
+     * uang muka. Field ini hilang dari daftar baca publik = DP tidak pernah ditawarkan,
      * padahal backend masih memakainya - jadi kontrak kecil ini ikut dijaga.
      */
     public function test_pengaturan_publik_membawa_ambang_dp_untuk_dibaca_frontend(): void
@@ -167,68 +125,30 @@ class DpPaymentTest extends TestCase
         $this->assertSame(0.0, (float) $booking->dp_shortfall);
     }
 
-    // ------------------------------------------------------------- DP via gateway
+    // ------------------------------------------------------------------ DP di meja
 
-    public function test_dp_lewat_gateway_menagih_tepat_sebesar_ambang(): void
+    public function test_dp_tunai_mengonfirmasikan_booking_walau_invoice_belum_lunas(): void
     {
+        // Ini inti fitur DP: kamar terkunci oleh uang muka, bukan oleh pelunasan.
         $this->setMinDp(30);
-        $this->fakeSnapCreate();
 
         $expected = (float) Booking::find($this->booking->id)->dp_min_amount;
         $this->assertGreaterThan(0, $expected);
 
-        $response = $this->requestGateway(['channel' => 'auto', 'type' => 'dp'])->assertStatus(201);
-
-        $payment = Payment::find($response->json('data.id'));
-
-        $this->assertSame(PaymentType::Dp->value, (string) $payment->type->value);
-        $this->assertEqualsWithDelta($expected, (float) $payment->amount, 0.01);
-        $this->assertSame(PaymentStatus::Pending->value, (string) $payment->status->value);
-
-        // Midtrans harus menerima gross_amount sebesar DP, bukan seluruh tagihan
-        Http::assertSent(function ($request) use ($expected) {
-            return (int) $request['transaction_details']['gross_amount'] === (int) round($expected);
-        });
-    }
-
-    public function test_dp_lewat_gateway_bisa_dengan_nominal_sendiri(): void
-    {
-        $this->setMinDp(30);
-        $this->fakeSnapCreate();
-
-        $response = $this->requestGateway([
-            'channel' => 'auto',
-            'type'    => 'dp',
-            'amount'  => 150000,
-        ])->assertStatus(201);
-
-        $payment = Payment::find($response->json('data.id'));
-
-        $this->assertEqualsWithDelta(150000.0, (float) $payment->amount, 0.01);
-        $this->assertSame(PaymentType::Dp->value, (string) $payment->type->value);
-    }
-
-    public function test_dp_terverifikasi_mengonfirmasikan_booking_walau_invoice_belum_lunas(): void
-    {
-        // Ini inti fitur DP: kamar terkunci oleh uang muka, bukan oleh pelunasan.
-        $this->setMinDp(30);
-        $this->fakeSnapCreate();
-
-        $paymentId = $this->requestGateway(['channel' => 'auto', 'type' => 'dp'])
-            ->assertStatus(201)
-            ->json('data.id');
-
-        $payment = Payment::find($paymentId);
-
+        // Sebelum ada uang masuk: reservasi masih menunggu.
         $this->assertSame(BookingStatus::Pending->value, (string) $this->booking->fresh()->status->value);
 
-        $this->postJson('/api/webhooks/payment-gateway', $this->settlement($payment, (float) $payment->amount))
-            ->assertStatus(200)
-            ->assertJsonPath('status', 'processed');
+        $paymentId = $this->pay([
+            'amount' => $expected,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Dp->value,
+        ])->assertStatus(201)->json('data.id');
 
         $booking = Booking::with('invoice')->find($this->booking->id);
         $payment = Payment::find($paymentId);
 
+        $this->assertSame(PaymentType::Dp->value, (string) $payment->type->value);
+        $this->assertEqualsWithDelta($expected, (float) $payment->amount, 0.01);
         $this->assertSame(PaymentStatus::Verified->value, (string) $payment->status->value);
         $this->assertSame(BookingStatus::Confirmed->value, (string) $booking->status->value);
         $this->assertNotSame(InvoiceStatus::Paid->value, (string) $booking->invoice->status->value);
@@ -236,24 +156,17 @@ class DpPaymentTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $booking->dp_shortfall, 0.01);
     }
 
-    public function test_dp_dibawah_ambang_membayar_tetap_pending_konfirmasi(): void
+    public function test_dp_di_bawah_ambang_tidak_mengonfirmasikan_booking(): void
     {
         // Uang masuk tapi belum mencapai ambang: booking jangan ikut terkunci 'confirmed',
         // kalau tidak check-in jadi lolos tanpa uang muka yang benar.
         $this->setMinDp(60);
-        $this->fakeSnapCreate();
 
-        $paymentId = $this->requestGateway([
-            'channel' => 'auto',
-            'type'    => 'dp',
-            'amount'  => 50000,
+        $paymentId = $this->pay([
+            'amount' => 50000,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Dp->value,
         ])->assertStatus(201)->json('data.id');
-
-        $payment = Payment::find($paymentId);
-
-        $this->postJson('/api/webhooks/payment-gateway', $this->settlement($payment, 50000.0))
-            ->assertStatus(200)
-            ->assertJsonPath('status', 'processed');
 
         $booking = Booking::find($this->booking->id);
 
@@ -262,92 +175,15 @@ class DpPaymentTest extends TestCase
         $this->assertGreaterThan(0, (float) $booking->dp_shortfall);
     }
 
-    // ------------------------------------------------------------------ penjaga
-
-    public function test_nominal_gateway_melebihi_sisa_ditolak(): void
+    public function test_dp_sebagian_yang_dibayar_di_bawah_ambang_bisa_dilunasi_bertahap(): void
     {
-        $this->setMinDp(30);
-        $this->fakeSnapCreate();
-
-        $response = $this->requestGateway([
-            'channel' => 'auto',
-            'type'    => 'dp',
-            'amount'  => $this->total + 100000,
-        ])->assertStatus(422);
-
-        $this->assertStringContainsString('melebihi sisa tagihan', (string) $response->json('error'));
-        $this->assertSame(0, Payment::where('booking_id', $this->booking->id)->count());
-    }
-
-    public function test_dp_ditolak_saat_ambang_dp_belum_diatur(): void
-    {
-        $this->setMinDp(0);
-        $this->fakeSnapCreate();
-
-        $response = $this->requestGateway(['channel' => 'auto', 'type' => 'dp'])->assertStatus(422);
-
-        $this->assertStringContainsString('DP minimum belum diatur', (string) $response->json('error'));
-        $this->assertSame(0, Payment::where('booking_id', $this->booking->id)->count());
-    }
-
-    public function test_type_gateway_asing_ditolak_dengan_pesan_bahasa_indonesia(): void
-    {
-        $this->fakeSnapCreate();
-
-        $this->requestGateway(['channel' => 'auto', 'type' => 'cicilan'])->assertStatus(422)
-            ->assertJsonValidationErrors(['type']);
-    }
-
-    public function test_tagihan_gateway_menggantikan_tautan_pending_sebelumnya(): void
-    {
-        // Kasir membuat QR, tamu tidak membayarnya, kasir membuat tagihan baru: tidak boleh
-        // ada dua tautan bayar hidup untuk tagihan yang sama.
-        $this->setMinDp(30);
-        $this->fakeSnapCreate();
-
-        $first  = Payment::find($this->requestGateway(['channel' => 'auto'])->assertStatus(201)->json('data.id'));
-        $second = Payment::find($this->requestGateway(['channel' => 'auto'])->assertStatus(201)->json('data.id'));
-
-        $this->assertSame(PaymentStatus::Expired->value, (string) $first->fresh()->status->value);
-        $this->assertStringContainsString('Digantikan tagihan gateway baru', (string) $first->fresh()->notes);
-        $this->assertSame(PaymentStatus::Pending->value, (string) $second->fresh()->status->value);
-
-        // Nominal tetap dihitung dari sisa yang benar, bukan dari total mentah
-        $this->assertEqualsWithDelta($this->total, (float) $second->amount, 0.01);
-    }
-
-    public function test_gateway_ditolak_saat_ada_pembayaran_manual_menunggu_verifikasi(): void
-    {
-        // Guard yang sama sudah berlaku untuk pembayaran manual; tanpa ini di jalur gateway,
-        // uang yang sama bisa ditagih dua kali (transfer pending + QR aktif).
-        Payment::create([
-            'booking_id'       => $this->booking->id,
-            'invoice_id'       => $this->booking->invoice_id,
-            'created_by'       => $this->admin->id,
-            'method'           => PaymentMethod::Transfer->value,
-            'type'             => PaymentType::Dp->value,
-            'status'           => PaymentStatus::Pending->value,
-            'amount'           => 100000,
-            'reference_number' => 'TRF-DP-PENDING',
-        ]);
-
-        $this->fakeSnapCreate();
-
-        $response = $this->requestGateway(['channel' => 'auto'])->assertStatus(422);
-
-        $this->assertStringContainsString('menunggu verifikasi admin', (string) $response->json('error'));
-        $this->assertSame(1, Payment::where('booking_id', $this->booking->id)->count());
-    }
-
-    public function test_dp_manual_dihitung_sebagai_uang_masuk_sisa_gateway_ikut_mengecil(): void
-    {
-        // Tamu bayar DP tunai di meja, sisanya baru ditagih lewat Midtrans: gateway tidak boleh
-        // menagih seluruh tagihan lagi.
+        // Tamu bayar DP tunai di meja, sisanya menyusul: sisa dihitung dari tagihan nyata,
+        // bukan dari estimasi layar, dan DP tidak ditagih ulang.
         $this->setMinDp(30);
 
         $dp = 100000;
 
-        $this->actingAs($this->admin)->postJson("/api/v1/bookings/{$this->booking->id}/payments", [
+        $this->pay([
             'amount' => $dp,
             'method' => PaymentMethod::Cash->value,
             'type'   => PaymentType::Dp->value,
@@ -359,56 +195,113 @@ class DpPaymentTest extends TestCase
         $this->assertEqualsWithDelta(round($this->total - $dp, 2), (float) $booking->remaining_due, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $booking->dp_shortfall, 0.01);
 
-        $this->fakeSnapCreate();
+        // Pelunasan sisa -> invoice benar-benar lunas
+        $this->pay([
+            'amount' => round($this->total - $dp, 2),
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Final->value,
+        ])->assertStatus(201);
 
-        $final = Payment::find($this->requestGateway(['channel' => 'auto'])->assertStatus(201)->json('data.id'));
-
-        $this->assertEqualsWithDelta(round($this->total - $dp, 2), (float) $final->amount, 0.01);
-        $this->assertSame(PaymentType::Final->value, (string) $final->type->value);
-
-        // Pelunasan datang dari gateway -> invoice lunas
-        $this->postJson('/api/webhooks/payment-gateway', $this->settlement($final, (float) $final->amount))
-            ->assertStatus(200)
-            ->assertJsonPath('status', 'processed');
-
-        $this->assertSame(InvoiceStatus::Paid->value, (string) Booking::find($this->booking->id)->invoice->status->value);
+        $this->assertSame(
+            InvoiceStatus::Paid->value,
+            (string) Booking::find($this->booking->id)->invoice->status->value
+        );
     }
 
-    public function test_tagihan_yang_sudah_lunas_tidak_bisa_ditagih_lagi(): void
+    // ------------------------------------------------------------------ penjaga
+
+    public function test_nominal_melebihi_sisa_tagihan_ditolak(): void
+    {
+        $this->setMinDp(30);
+
+        $response = $this->pay([
+            'amount' => $this->total + 100000,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Dp->value,
+        ])->assertStatus(422);
+
+        $this->assertStringContainsString('melebihi sisa tagihan', (string) $response->json('error'));
+        $this->assertSame(0, Payment::where('booking_id', $this->booking->id)->count());
+    }
+
+    public function test_pembayaran_baru_ditolak_saat_ada_klaim_menunggu_verifikasi(): void
+    {
+        // Transfer masih menunggu admin; kalau jalur lain boleh terus mencatat, uang yang
+        // sama bisa ditagih dua kali.
+        $this->setMinDp(30);
+
+        $this->pay([
+            'amount'           => 100000,
+            'method'           => PaymentMethod::Transfer->value,
+            'type'             => PaymentType::Dp->value,
+            'reference_number' => 'TRF-DP-PENDING',
+        ])->assertStatus(201);
+
+        $response = $this->pay([
+            'amount' => 50000,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Final->value,
+        ])->assertStatus(422);
+
+        $this->assertStringContainsString('menunggu verifikasi admin', (string) $response->json('error'));
+        $this->assertSame(1, Payment::where('booking_id', $this->booking->id)->count());
+    }
+
+    public function test_tagihan_yang_sudah_lunas_tidak_bisa_dibayar_lagi(): void
     {
         // Setelah seluruh tagihan lunas, tidak ada jalur penagihan baru - termasuk "DP".
-        $this->fakeSnapCreate();
+        $this->pay([
+            'amount' => $this->total,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Final->value,
+        ])->assertStatus(201);
 
-        $payment = Payment::find($this->requestGateway(['channel' => 'auto'])->assertStatus(201)->json('data.id'));
+        $this->assertSame(
+            InvoiceStatus::Paid->value,
+            (string) Booking::find($this->booking->id)->invoice->status->value
+        );
 
-        $this->postJson('/api/webhooks/payment-gateway', $this->settlement($payment, (float) $payment->amount))
-            ->assertStatus(200)
-            ->assertJsonPath('status', 'processed');
+        $this->pay([
+            'amount' => 50000,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Dp->value,
+        ])->assertStatus(422);
 
-        $this->fakeSnapCreate();
-
-        $this->requestGateway(['channel' => 'auto'])->assertStatus(422)
-            ->assertJsonFragment(['error' => 'Invoice sudah lunas.']);
+        $this->assertSame(1, Payment::where('booking_id', $this->booking->id)->count());
     }
 
-    public function test_penagihan_baru_ditolak_sisa_sudah_habis_oleh_pembayaran_verifikasi_manual(): void
+    public function test_penagihan_baru_ditolak_sisa_sudah_habis_oleh_pembayaran_pending(): void
     {
-        // Sisa nol tapi invoice belum sempat ditandai lunas (mis. pembayaran pending menunggu
-        // admin): tetap jangan menagih Rp 0 ke Midtrans.
-        Payment::create([
-            'booking_id'       => $this->booking->id,
-            'invoice_id'       => $this->booking->invoice_id,
-            'created_by'       => $this->admin->id,
+        // Sisa nol tapi invoice belum sempat ditandai lunas (pembayaran masih menunggu
+        // admin): jangan ada catatan pembayaran Rp 0 / dobel.
+        $this->pay([
+            'amount'           => $this->total,
             'method'           => PaymentMethod::Transfer->value,
             'type'             => PaymentType::Final->value,
-            'status'           => PaymentStatus::Pending->value,
-            'amount'           => $this->total,
             'reference_number' => 'TRF-DP-SISA-HABIS',
-        ]);
+        ])->assertStatus(201);
 
-        $this->fakeSnapCreate();
+        $response = $this->pay([
+            'amount' => 10000,
+            'method' => PaymentMethod::Cash->value,
+            'type'   => PaymentType::Final->value,
+        ])->assertStatus(422);
 
-        $this->requestGateway(['channel' => 'auto'])->assertStatus(422)
-            ->assertJsonFragment(['error' => 'Masih ada pembayaran manual menunggu verifikasi admin (TRF-DP-SISA-HABIS). Verifikasi atau tolak pembayaran itu sebelum menagih lewat gateway.']);
+        $this->assertStringContainsString('menunggu verifikasi admin', (string) $response->json('error'));
+        $this->assertSame(1, Payment::where('booking_id', $this->booking->id)->count());
+    }
+
+    public function test_metode_gateway_ditolak_validasi_enum(): void
+    {
+        // Payment gateway sudah dihentikan: nilainya bukan lagi metode yang sah, jadi
+        // tidak bisa masuk lewat API pembayaran meja.
+        $response = $this->pay([
+            'amount' => 50000,
+            'method' => 'payment_gateway',
+            'type'   => PaymentType::Dp->value,
+        ])->assertStatus(422);
+
+        $response->assertJsonValidationErrors(['method']);
+        $this->assertSame(0, Payment::where('booking_id', $this->booking->id)->count());
     }
 }

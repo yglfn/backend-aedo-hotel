@@ -25,7 +25,6 @@
                 $methodName = $row->method;
                 if($methodName == 'cash') $methodName = 'Tunai';
                 elseif($methodName == 'transfer') $methodName = 'Transfer Bank';
-                elseif($methodName == 'payment_gateway') $methodName = 'Payment Gateway';
                 @endphp
                 {{ $methodName }}
             </td>

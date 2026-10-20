@@ -127,6 +127,6 @@ Akun `is_active = false` tidak bisa login.
 
 - **Auth** menggunakan Laravel Sanctum mode SPA (cookie session + CSRF), **bukan** token Bearer.
 - Frontend dan backend **wajib** berada di domain induk yang sama agar cookie berfungsi (contoh: `localhost`).
-- Jangan pernah commit file `.env` atau API key payment gateway ke repositori.
+- Jangan pernah commit file `.env` atau API key apa pun ke repositori.
 - Semua kalkulasi harga (total booking, invoice) dilakukan di **server**, tidak boleh dipercayakan ke frontend.
 

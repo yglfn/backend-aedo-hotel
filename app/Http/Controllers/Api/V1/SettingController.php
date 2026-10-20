@@ -11,7 +11,7 @@ class SettingController extends Controller
 {
     /**
      * Field yang boleh dibaca publik (halaman login & header SPA memakai route ini
-     * tanpa autentikasi). Secret gateway sengaja tidak pernah dikirim.
+     * tanpa autentikasi).
      */
     private const PUBLIC_FIELDS = [
         'hotel_name',
@@ -24,8 +24,6 @@ class SettingController extends Controller
         'min_dp_percentage',
         'auto_verify_transfers',
         'auto_verify_max_amount',
-        'payment_expiry_minutes',
-        'payment_gateway_provider',
     ];
 
     public function show()
@@ -48,11 +46,6 @@ class SettingController extends Controller
             // Verifikasi otomatis berbasis bukti (pengganti approval admin di depan)
             'auto_verify_transfers'    => 'nullable|boolean',
             'auto_verify_max_amount'   => 'nullable|numeric|min:0',
-            'payment_expiry_minutes'   => 'required|integer|min:1',
-            // Opsional: hanya diisi lewat API admin. Nilainya dienkripsi di database
-            // dan tidak pernah dikembalikan oleh endpoint mana pun.
-            'payment_gateway_provider' => 'nullable|string|max:100',
-            'payment_gateway_config'   => 'nullable|array',
         ], [
             'hotel_name.required'           => 'Nama hotel wajib diisi.',
             'hotel_email.email'             => 'Format email hotel tidak valid.',
@@ -64,8 +57,6 @@ class SettingController extends Controller
             'min_dp_percentage.max'         => 'Minimal DP maksimal 100%.',
             'auto_verify_transfers.boolean' => 'Saklar verifikasi otomatis harus benar/salah.',
             'auto_verify_max_amount.numeric' => 'Plafon verifikasi otomatis harus berupa angka.',
-            'payment_expiry_minutes.integer' => 'Masa berlaku pembayaran harus berupa angka.',
-            'payment_gateway_config.array'  => 'Konfigurasi gateway harus berupa objek.',
         ]);
 
         $setting = Setting::instance();
@@ -85,22 +76,13 @@ class SettingController extends Controller
             $validated['auto_verify_max_amount'] = (float) ($validated['auto_verify_max_amount'] ?? 0);
         }
 
-        // Kolom config jangan pernah disalin ke audit log: membacanya lewat only() akan
-        // mendekripsi nilainya. Cukup catat bahwa nilainya berubah.
-        $auditedKeys = array_diff(array_keys($validated), ['payment_gateway_config']);
-        $changedConfig = array_key_exists('payment_gateway_config', $validated);
-
-        $oldValues = $setting->only($auditedKeys);
+        $oldValues = $setting->only(array_keys($validated));
 
         $setting->update($validated);
 
-        $newValues = $setting->only($auditedKeys);
-        if ($changedConfig) {
-            $oldValues['payment_gateway_config'] = '[terenkripsi, nilai lama]';
-            $newValues['payment_gateway_config'] = '[terenkripsi, diganti]';
-        }
+        $newValues = $setting->only(array_keys($validated));
 
-        // Perubahan pajak/jam operasional & kredensial = aksi penting yang wajib diaudit
+        // Perubahan pajak/jam operasional = aksi penting yang wajib diaudit
         // (AGENTS.md bagian 6 butir 10).
         AuditService::log('settings.updated', $setting, $oldValues, $newValues, $request);
 

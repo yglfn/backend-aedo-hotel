@@ -17,10 +17,6 @@
     { "key": "user_id", "value": "", "type": "string" },
     { "key": "maintenance_id", "value": "", "type": "string" },
     { "key": "housekeeping_id", "value": "", "type": "string" },
-    { "key": "gateway_transaction_id", "value": "", "type": "string" },
-    { "key": "gateway_amount", "value": "", "type": "string" },
-    { "key": "sandbox_token", "value": "simulator-secret-key-aedo-hotel", "type": "string" },
-    { "key": "midtrans_server_key", "value": "SB-Mid-server-isi-dari-midtrans", "type": "string" },
     { "key": "xsrf_token", "value": "", "type": "string" }
   ],
   "event": [
@@ -219,7 +215,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"hotel_name\": \"Aedo Hotel Syariah\",\n  \"hotel_address\": \"Jl. Contoh No. 1, Kota\",\n  \"hotel_phone\": \"0291-123456\",\n  \"hotel_email\": \"info@aedohotel.com\",\n  \"default_check_in\": \"14:00:00\",\n  \"default_check_out\": \"12:00:00\",\n  \"tax_percentage\": 11,\n  \"payment_expiry_minutes\": 60\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"hotel_name\": \"Aedo Hotel Syariah\",\n  \"hotel_address\": \"Jl. Contoh No. 1, Kota\",\n  \"hotel_phone\": \"0291-123456\",\n  \"hotel_email\": \"info@aedohotel.com\",\n  \"default_check_in\": \"14:00:00\",\n  \"default_check_out\": \"12:00:00\",\n  \"tax_percentage\": 11\n}" },
             "url": { "raw": "{{base_url}}/api/v1/settings", "host": ["{{base_url}}"], "path": ["api", "v1", "settings"] }
           }
         }
@@ -655,33 +651,6 @@
           }
         },
         {
-          "name": "Cek Status Pembayaran ke Gateway",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/payments/{{payment_id}}/sync", "host": ["{{base_url}}"], "path": ["api", "v1", "payments", "{{payment_id}}", "sync"] },
-            "description": "Tanya status transaksi ke provider. Dipakai saat tamu sudah bayar tapi webhook belum masuk; idempoten dan hanya mengubah status atas jawaban provider."
-          }
-        },
-        {
-          "name": "Sinkron Semua Payment Pending",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/payments/sync-pending", "host": ["{{base_url}}"], "path": ["api", "v1", "payments", "sync-pending"] },
-            "description": "Tanyakan status semua payment gateway yang masih pending ke provider (dipanggil otomatis saat halaman Daftar Pembayaran/Reservasi dibuka). Batas throttle 6 request/menit; balikannya { changed, message }."
-          }
-        },
-        {
-          "name": "Hasil Pembayaran (Publik, tanpa login)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/payment-result/{{gateway_transaction_id}}", "host": ["{{base_url}}"], "path": ["api", "payment-result", "{{gateway_transaction_id}}"] },
-            "description": "Dituju callbacks.finish Midtrans. Tanpa auth + throttle 20/menit. Status dibaca dari DB dan diverifikasi ke gateway; ?status= di URL tidak dipercaya. Respons minimal tanpa data pribadi tamu."
-          }
-        },
-        {
           "name": "Batalkan Pembayaran Verified (Reversal, Admin)",
           "request": {
             "method": "POST",
@@ -763,208 +732,7 @@
       ]
     },
     {
-      "name": "12. Payment Gateway",
-      "item": [
-        {
-          "name": "Sandbox: Bayar Transaksi (non-produksi)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }, { "key": "X-Sandbox-Token", "value": "{{sandbox_token}}" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{base_url}}/api/sandbox/gateway/{{gateway_transaction_id}}/pay", "host": ["{{base_url}}"], "path": ["api", "sandbox", "gateway", "{{gateway_transaction_id}}", "pay"] },
-            "description": "Meniru tamu yang benar-benar membayar: endpoint ini cuma mengirim webhook bertanda tangan sah ke jalur normal, jadi cek signature, kecocokan nominal, dan idempotensi tetap berlaku. 404 di produksi; butuh X-Sandbox-Token (= PG_SIMULATOR_SECRET) atau login staf lewat /api/v1/sandbox/gateway/.../pay."
-          }
-        },
-        {
-          "name": "Simulasi Webhook Midtrans (settlement)",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "exec": [
-                  "// Midtrans: signature_key = SHA512(order_id + status_code + gross_amount + server key)",
-                  "const orderId = pm.collectionVariables.get('gateway_transaction_id');",
-                  "const amount  = Number(pm.collectionVariables.get('gateway_amount') || 0);",
-                  "const gross   = amount.toFixed(2);",
-                  "const key     = pm.collectionVariables.get('midtrans_server_key');",
-                  "pm.collectionVariables.set('midtrans_body', JSON.stringify({",
-                  "    transaction_id: 'mt-' + Date.now(),",
-                  "    order_id: orderId,",
-                  "    gross_amount: gross,",
-                  "    currency: 'IDR',",
-                  "    payment_type: 'qris',",
-                  "    transaction_status: 'settlement',",
-                  "    status_code: '200',",
-                  "    fraud_status: 'accept',",
-                  "    signature_key: CryptoJS.SHA512(orderId + '200' + gross + key).toString()",
-                  "}));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Webhook Midtrans diproses', () => {",
-                  "    pm.expect(['processed','skipped','amount_mismatch']).to.include(pm.response.json().status);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{{midtrans_body}}" },
-            "url": { "raw": "{{base_url}}/api/webhooks/payment-gateway", "host": ["{{base_url}}"], "path": ["api", "webhooks", "payment-gateway"] },
-            "description": "Untuk PG_PROVIDER=midtrans. Isi midtrans_server_key dengan server key yang sama dengan .env (sandbox: SB-Mid-server-...). Nominal diambil dari gateway_amount, jadi settlement palsu dengan nominal lain akan ditolak 422."
-          }
-        },
-        {
-          "name": "Buat Snap Auto (tamu pilih metode bayar)",
-          "description": "channel=auto: permintaan Snap dikirim tanpa enabled_payments, jadi Midtrans menampilkan semua kanal yang aktif di Merchant Account dalam satu popup. Ini default aplikasi.",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"auto\"\n}" },
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
-          }
-        },
-        {
-          "name": "Buat DP Gateway (uang muka)",
-          "description": "type=dp: Midtrans ditagih sebesar Minimal DP (%) dari tagihan (default backend), atau sebesar amount bila dikirim eksplisit. amount tidak boleh melebihi sisa tagihan (422). Payment tercatat bertipe dp; begitu terverifikasi dan ambang terpenuhi, reservasi otomatis confirmed walau invoice belum lunas.",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
-                  "const res = pm.response.json();",
-                  "if (res.data) {",
-                  "    pm.collectionVariables.set('payment_id', res.data.id);",
-                  "    pm.collectionVariables.set('gateway_transaction_id', res.data.gateway_transaction_id);",
-                  "    pm.collectionVariables.set('gateway_amount', res.data.amount);",
-                  "    console.log('Tipe:', res.data.type, 'Nominal DP:', res.data.amount);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"auto\",\n  \"type\": \"dp\"\n}" },
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
-          }
-        },
-        {
-          "name": "Buat QRIS Gateway Payment (paksa 1 kanal)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
-                  "const res = pm.response.json();",
-                  "if (res.data) {",
-                  "    pm.collectionVariables.set('payment_id', res.data.id);",
-                  "    pm.collectionVariables.set('gateway_transaction_id', res.data.gateway_transaction_id);",
-                  "    pm.collectionVariables.set('gateway_amount', res.data.amount);",
-                  "    console.log('Transaction ID:', res.data.gateway_transaction_id);",
-                  "    console.log('QR String:', res.payment_info ? res.payment_info.qr_string : '-');",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"qris\"\n}" },
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
-          }
-        },
-        {
-          "name": "Buat VA Gateway Payment",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"channel\": \"va\"\n}" },
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/gateway", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "gateway"] }
-          }
-        },
-        {
-          "name": "Simulasi Webhook Bayar Berhasil",
-          "description": "Simulasi callback gateway seolah tamu sudah bayar. amount WAJIB sama dengan tagihan, dan signature dihitung atas '<timestamp>.<payload>'. Untuk demo lebih gampang gunakan request 'Sandbox: Bayar Transaksi'.",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "exec": [
-                  "// Hitung HMAC-SHA256 signature (kanonik: timestamp + '.' + body)",
-                  "const txId = pm.collectionVariables.get('gateway_transaction_id');",
-                  "const amount = Number(pm.collectionVariables.get('gateway_amount') || 0);",
-                  "const timestamp = String(Math.floor(Date.now() / 1000));",
-                  "const payload = JSON.stringify({",
-                  "    transaction_id: txId,",
-                  "    event: 'payment.settled',",
-                  "    status: 'paid',",
-                  "    amount: amount",
-                  "});",
-                  "",
-                  "// Simpan payload ke variable agar bisa dipakai di body",
-                  "pm.collectionVariables.set('webhook_payload', payload);",
-                  "pm.collectionVariables.set('webhook_timestamp', timestamp);",
-                  "",
-                  "// Hitung HMAC (Postman CryptoJS)",
-                  "const secret = pm.collectionVariables.get('sandbox_token') || 'simulator-secret-key-aedo-hotel';",
-                  "const signature = CryptoJS.HmacSHA256(timestamp + '.' + payload, secret).toString();",
-                  "pm.collectionVariables.set('webhook_signature', 'hmac-sha256=' + signature);",
-                  "console.log('Payload:', payload, 'Amount:', amount);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Webhook diproses', () => {",
-                  "    const res = pm.response.json();",
-                  "    pm.expect(['processed', 'skipped']).to.include(res.status);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Simulator-Signature", "value": "{{webhook_signature}}" },
-              { "key": "X-Simulator-Timestamp", "value": "{{webhook_timestamp}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{{webhook_payload}}" },
-            "url": { "raw": "{{base_url}}/api/webhooks/payment-gateway", "host": ["{{base_url}}"], "path": ["api", "webhooks", "payment-gateway"] }
-          }
-        },
-        {
-          "name": "List Log Gateway (Admin)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": {
-              "raw": "{{base_url}}/api/v1/payment-gateway-logs?processed=true",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "payment-gateway-logs"],
-              "query": [{ "key": "processed", "value": "true" }]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "13. Housekeeping",
+      "name": "12. Housekeeping",
       "item": [
         {
           "name": "List Tugas Housekeeping",
@@ -986,7 +754,7 @@
       ]
     },
     {
-      "name": "14. Maintenance",
+      "name": "13. Maintenance",
       "item": [
         {
           "name": "List Laporan Kerusakan",
@@ -1028,7 +796,7 @@
       ]
     },
     {
-      "name": "15. Review",
+      "name": "14. Review",
       "item": [
         {
           "name": "List Semua Review (Admin)",
@@ -1051,7 +819,7 @@
       ]
     },
     {
-      "name": "16. Laporan",
+      "name": "15. Laporan",
       "item": [
         {
           "name": "Okupansi (JSON)",

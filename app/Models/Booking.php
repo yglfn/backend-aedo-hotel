@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\BookingSource;
 use App\Enums\BookingStatus;
-use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\PaymentType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -178,14 +177,12 @@ class Booking extends Model
     }
 
     /**
-     * True bila ada pembayaran MANUAL (tunai/transfer/QRIS non-gateway) yang menunggu
-     * verifikasi. Selama itu ada, penagihan baru harus ditolak supaya tidak bayar dobel.
-     * QR gateway yang belum di-scan tidak memblokir (akan kedaluwarsa sendiri).
+     * True bila ada pembayaran yang masih menunggu verifikasi. Selama itu ada, penagihan
+     * baru harus ditolak supaya tamu tidak bayar dobel untuk uang yang sama.
      */
     public function getBlocksManualPaymentAttribute(): bool
     {
-        return $this->payments->contains(fn (Payment $payment) => $payment->status === PaymentStatus::Pending
-            && $payment->method !== PaymentMethod::PaymentGateway);
+        return $this->payments->contains(fn (Payment $payment) => $payment->status === PaymentStatus::Pending);
     }
 
     private function sumByStatus(PaymentStatus $status): float

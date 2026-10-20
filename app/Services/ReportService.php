@@ -84,8 +84,7 @@ class ReportService
                 SUM(amount) as total_revenue,
                 COUNT(*) as total_transactions,
                 SUM(CASE WHEN method = "cash" THEN amount ELSE 0 END) as cash_revenue,
-                SUM(CASE WHEN method = "transfer" THEN amount ELSE 0 END) as transfer_revenue,
-                SUM(CASE WHEN method = "payment_gateway" THEN amount ELSE 0 END) as gateway_revenue
+                SUM(CASE WHEN method = "transfer" THEN amount ELSE 0 END) as transfer_revenue
             ')
             ->first();
 
@@ -104,7 +103,6 @@ class ReportService
             'total_transactions'  => (int)   ($payments->total_transactions ?? 0),
             'cash_revenue'        => (float) ($payments->cash_revenue ?? 0),
             'transfer_revenue'    => (float) ($payments->transfer_revenue ?? 0),
-            'gateway_revenue'     => (float) ($payments->gateway_revenue ?? 0),
             'daily'               => $daily,
         ];
     }

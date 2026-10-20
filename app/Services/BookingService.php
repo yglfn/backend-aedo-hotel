@@ -16,7 +16,6 @@ use App\Enums\InvoiceStatus;
 use App\Enums\RoomStatus;
 use App\Enums\HousekeepingStatus;
 use App\Models\Setting;
-use App\Services\PaymentGateway\PaymentGatewayService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -25,29 +24,8 @@ use Exception;
 class BookingService
 {
     public function __construct(
-        protected InvoiceService $invoiceService,
-        protected PaymentGatewayService $gatewayService
+        protected InvoiceService $invoiceService
     ) {}
-
-    /**
-     * Tarik status pembayaran gateway yang sebenarnya untuk reservasi ini, lalu segarkan
-     * model yang dipegang pemanggil supaya guard berikutnya menilai data terbaru.
-     *
-     * Ini yang membuat check-in/check-out ikut sinkron dengan gateway walau webhook tidak
-     * masuk (lokal tanpa tunnel) dan scheduler tidak jalan (tanpa cron).
-     *
-     * @return array{checked: int, changed: int, unavailable: bool}
-     */
-    protected function reconcileGatewayPayments(Booking $booking): array
-    {
-        $result = $this->gatewayService->reconcileBooking($booking);
-
-        if (($result['changed'] ?? 0) > 0) {
-            $booking->refresh();
-        }
-
-        return $result;
-    }
 
     /**
      * Mengecek ketersediaan kamar pada rentang tanggal tertentu.
@@ -231,9 +209,6 @@ class BookingService
      */
     public function checkIn(Booking $booking, int $userId): Booking
     {
-        // Uang yang sudah masuk di gateway harus terlihat sebelum guard status menilai
-        $this->reconcileGatewayPayments($booking);
-
         $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
 
         // Best practice & AGENTS.md bagian 6 butir 5: hanya reservasi `confirmed` yang boleh
@@ -318,10 +293,6 @@ class BookingService
      */
     public function checkOut(Booking $booking, int $userId): Booking
     {
-        // Cek dulu status pembayaran yang sebenarnya di gateway supaya tamu yang sudah bayar
-        // tidak tertahan oleh status pending yang tertinggal
-        $reconciled = $this->reconcileGatewayPayments($booking);
-
         $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
         if ($statusValue !== BookingStatus::CheckedOut->value && $statusValue !== BookingStatus::CheckedIn->value) {
             throw new Exception("Hanya reservasi berstatus Checked-In yang bisa Check-Out.");
@@ -337,11 +308,6 @@ class BookingService
                 if ($remaining > 0) {
                     throw new Exception(
                         'Tagihan belum lunas. Sisa pembayaran: Rp ' . number_format($remaining, 0, ',', '.')
-                        . (($reconciled['unavailable'] ?? false)
-                            ? ' Status payment gateway belum dapat diperiksa — periksa koneksi lalu ulangi.'
-                            : ((($reconciled['checked'] ?? 0) > 0)
-                                ? ' Pembayaran gateway masih menunggu konfirmasi dari provider.'
-                                : ''))
                     );
                 }
             }

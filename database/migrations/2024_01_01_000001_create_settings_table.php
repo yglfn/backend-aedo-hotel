@@ -17,9 +17,6 @@ return new class extends Migration
             $table->time('default_check_in')->default('14:00:00');
             $table->time('default_check_out')->default('12:00:00');
             $table->decimal('tax_percentage', 5, 2)->default(0);
-            $table->string('payment_gateway_provider')->nullable();
-            $table->text('payment_gateway_config')->nullable(); // encrypted JSON
-            $table->integer('payment_expiry_minutes')->default(60);
             $table->timestamps();
         });
     }

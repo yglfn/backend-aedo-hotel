@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
 use App\Enums\PaymentMethod;
-use App\Enums\PaymentStatus;
 use App\Enums\UserRole;
 use App\Models\Booking;
 use App\Models\Customer;
@@ -203,27 +202,5 @@ class PaymentFlowTest extends TestCase
         // Pelunasan sebagian lagi -> total verified 600.000 melewati ambang -> confirmed
         $this->pay($booking, 100000, PaymentMethod::Cash->value, 'final')->assertStatus(201);
         $this->assertSame(BookingStatus::Confirmed->value, $booking->fresh()->status->value);
-    }
-
-    public function test_gateway_payment_is_still_allowed_while_qr_pending(): void
-    {
-        $booking = $this->makeBooking('FLOW5');
-
-        // QR gateway pending tidak memblokir jalur lain (QR bisa kedaluwarsa)
-        $this->actingAs($this->admin)
-            ->postJson("/api/v1/bookings/{$booking->id}/payments/gateway", ['channel' => 'qris'])
-            ->assertStatus(201);
-
-        $pending = Payment::where('booking_id', $booking->id)->where('status', PaymentStatus::Pending->value)->first();
-        $this->assertNotNull($pending);
-        $this->assertSame(PaymentMethod::PaymentGateway->value, $pending->method->value);
-
-        // QR aktif menagih seluruh sisa tagihan, jadi sisa sementara jadi 0 dan staf
-        // tidak menagih dobel; tetapi payment manual TETAP boleh karena QR bisa kedaluwarsa.
-        $booking->load(['payments', 'invoice']);
-        $this->assertSame(1110000.0, (float) $booking->paid_pending);
-        $this->assertSame(0.0, (float) $booking->remaining_due);
-        $this->assertTrue((bool) $booking->has_pending_payment);
-        $this->assertFalse((bool) $booking->blocks_manual_payment);
     }
 }
