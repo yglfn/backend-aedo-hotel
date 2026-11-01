@@ -119,6 +119,7 @@ Route::prefix('v1')->group(function () {
 
         // Reports (admin only)
         Route::middleware('role:admin')->prefix('reports')->group(function () {
+            Route::get('/summary', [\App\Http\Controllers\Api\V1\ReportController::class, 'summary']);
             Route::get('/occupancy', [\App\Http\Controllers\Api\V1\ReportController::class, 'occupancy']);
             Route::get('/revenue', [\App\Http\Controllers\Api\V1\ReportController::class, 'revenue']);
             Route::get('/reservations', [\App\Http\Controllers\Api\V1\ReportController::class, 'reservations']);

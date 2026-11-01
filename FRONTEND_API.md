@@ -387,7 +387,7 @@ GET /api/v1/rooms/availability?check_in=2026-11-01&check_out=2026-11-03
 | `POST` | `/api/v1/bookings` | Semua | Buat reservasi baru |
 | `GET` | `/api/v1/bookings/{id}` | Semua | Detail reservasi |
 | `POST` | `/api/v1/bookings/{id}/confirm` | Semua | Konfirmasi manual reservasi `pending` → `confirmed` (jalur Traveloka / kredit hotel). Bila `min_dp_percentage` > 0, pegawai wajib memenuhi ambang DP; admin boleh melewati (tercatat di audit log) |
-| `POST` | `/api/v1/bookings/{id}/check-in` | Semua | Proses check-in |
+| `POST` | `/api/v1/bookings/{id}/check-in` | Semua | Proses check-in. Body opsional `{ "guests": [{ "name": "...", "ktp": "..." }] }` untuk melengkapi penghuni yang belum tercatat saat reservasi |
 | `POST` | `/api/v1/bookings/{id}/check-out` | Semua | Proses check-out |
 | `POST` | `/api/v1/bookings/{id}/cancel` | Semua | Batalkan reservasi (invoice ikut di-`void`) |
 | `POST` | `/api/v1/bookings/{id}/services` | — | ⚠ **Belum tersedia** (layanan hanya bisa dikirim saat membuat booking) |
@@ -409,6 +409,19 @@ GET /api/v1/rooms/availability?check_in=2026-11-01&check_out=2026-11-03
   "notes": "Minta kamar di lantai atas"
 }
 ```
+
+**Aturan data tamu (penanggung jawab + penghuni):**
+
+- `guests[]` minimal 1 baris dan **tidak boleh lebih banyak** daripada `guest_count`.
+- **Tepat satu** baris `is_primary: true` = penanggung jawab reservasi (dipakai juga sebagai data
+  pelanggan). Dua atau nol primary → `HTTP 422`.
+- Reservasi untuk 2 orang tetap boleh disimpan dengan 1 nama (`guests` cuma berisi penanggung
+  jawab). Nama penghuni lain dikejar saat **check-in**.
+- `check-in` menolak reservasi yang namanya belum sebanyak `guest_count`
+  (`HTTP 422`, pesan: *"Data penghuni belum lengkap: 1 dari 2 tamu tercatat..."*).
+- Penghuni yang dikirim saat check-in hanya mengisi **sisa slot**; nama duplikat dilewati, dan
+  penambahan dicatat di audit log (`booking.guests_completed`).
+- `ktp` dan `phone` per penghuni boleh kosong di awal; KTP disimpan terenkripsi.
 
 **Setiap baris reservasi membawa ringkasan pembayaran yang dihitung backend** (jangan hitung ulang di frontend):
 ```json
@@ -618,13 +631,14 @@ await axios.post(`/api/v1/payments/${paymentId}/proof`, formData, {
 ### 6.15 Laporan (Admin only)
 
 Semua laporan mendukung parameter:
-- `?from=2026-11-01&to=2026-11-30` — filter periode
-- `?format=json` — default, kembalikan JSON
+- `?from=2026-11-01&to=2026-11-30` — filter periode (default: awal bulan s/d hari ini)
+- `?format=json` — **default**; payload inilah yang dibaca layar Laporan di aplikasi (angka, grafik, tabel)
 - `?format=pdf` — download file PDF
 - `?format=xlsx` — download file Excel
 
 | Method | URL | Deskripsi |
 |---|---|---|
+| `GET` | `/api/v1/reports/summary` | Ringkasan semua laporan + pembanding periode sebelumnya. Ini satu-satunya laporan yang ditampilkan di layar Pusat Laporan dan ikut bisa diunduh PDF/Excel |
 | `GET` | `/api/v1/reports/occupancy` | Tingkat okupansi kamar |
 | `GET` | `/api/v1/reports/revenue` | Pendapatan harian |
 | `GET` | `/api/v1/reports/reservations` | Daftar reservasi |
@@ -633,6 +647,29 @@ Semua laporan mendukung parameter:
 | `GET` | `/api/v1/reports/shifts` | Laporan per shift pegawai |
 | `GET` | `/api/v1/reports/sources` | Sumber reservasi (walk-in, traveloka, dll) |
 | `GET` | `/api/v1/reports/housekeeping` | Laporan housekeeping |
+
+**Yang sudah disediakan payload JSON** supaya layar laporan tidak perlu menghitung ulang:
+
+| Laporan | Angka siap pakai | Daftar baris |
+|---|---|---|
+| `summary` | `revenue.*`, `occupancy.*`, `reservations.by_status`, `housekeeping.*`, `shifts.*`, `rooms.*`, `highlights.*` | `revenue_trend`, `payment_mix`, `booking_sources` |
+| `revenue` | `average_per_day`, `average_per_txn`, `cash/transfer/qris_revenue`, `pending_*`, `refund_total`, `best_day` | `daily[]` |
+| `occupancy` | `occupancy_rate`, `empty_room_nights`, `idle_rooms`, `busiest_room` | `per_room[]` (`room_type`, `room_rate`) |
+| `reservations` | `summary.total_value`, `average_value`, `average_nights`, `collected`, `outstanding`, `cancellation_rate` | `bookings[]` |
+| `transactions` | `summary.total_amount`, `verified_amount`, `pending_amount`, `failed_amount`, `refund_amount` | `payments[]`, `by_status[]`, `by_method[]` |
+| `payment-methods` | `total_amount`, `total_count` | `data[]` (`label`, `share_percent`, `count_percent`, `average`) |
+| `shifts` | `summary.total_collected`, `average_collected`, `open_shifts` | `shifts[]` (`duration_hours`) |
+| `sources` | `total_count`, `total_revenue` | `data[]` (`label`, `share_percent`, `average_value`) |
+| `housekeeping` | `summary.completion_rate`, `average_hours`, `unassigned` | `tasks[]`, `by_staff[]` |
+
+Setiap laporan detail juga mengirim `comparison` (periode sebelumnya dengan panjang sama).
+
+**Layar Laporan (Admin) hanya menampilkan Ringkasan.** Delapan tab laporan detail sudah dihapus dari aplikasi; endpoint-nya tetap ada untuk kebutuhan QA/Postman/integrasi (`?format=json|pdf|xlsx`). Ringkasan bisa diunduh sebagai `?format=pdf` (satu dokumen berisi tabel ukuran utama, metode bayar, sumber, status reservasi, operasional, tren harian, sorotan) atau `?format=xlsx` (baris `Bagian | Ukuran | Nilai`).
+
+Aturan penting untuk frontend:
+- `comparison.change_percent` bisa `null` bila periode pembanding kosong. Tampilkan "Belum ada pembanding", **bukan** 0%.
+- Kolom uang agregat sudah berupa angka dari server. Kolom model lama (`total_price`, `amount`) masih string desimal — pakai `Number()` sebelum berhitung.
+- Laporan tidak membawa KTP tamu; cukup nama tamu untuk identifikasi.
 
 **Contoh download PDF di React:**
 ```ts
@@ -672,7 +709,8 @@ POST /bookings/{id}/services
 POST /bookings/{id}/payments  ← cash / transfer / qris (dicatat staf)
 
 [Check-In]
-POST /bookings/{id}/check-in
+POST /bookings/{id}/check-in  ← GAGAL (422) jika nama penghuni kurang dari guest_count;
+                                kirim guests[] pada request yang sama untuk melengkapi
 ↓ Kamar → occupied
 
 [Tambah Layanan Saat Menginap (opsional)]

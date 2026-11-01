@@ -9,6 +9,7 @@ class BookingGuest extends Model
 {
     protected $fillable = [
         'booking_id',
+        'booking_room_id',
         'name',
         'ktp',
         'phone',
@@ -18,13 +19,20 @@ class BookingGuest extends Model
     protected function casts(): array
     {
         return [
-            'ktp'        => 'encrypted',
-            'is_primary' => 'boolean',
+            'ktp'            => 'encrypted',
+            'is_primary'     => 'boolean',
+            'booking_room_id' => 'integer',
         ];
     }
 
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    /** Kamar tempat penghuni ini menginap (reservasi multi-kamar). */
+    public function bookingRoom(): BelongsTo
+    {
+        return $this->belongsTo(BookingRoom::class);
     }
 }

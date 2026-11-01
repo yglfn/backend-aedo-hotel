@@ -52,8 +52,9 @@ class BookingTest extends TestCase
                              'guest_count' => 3, // Maks 4 untuk 2 kamar deluxe
                              'rooms' => [$room1->id, $room2->id],
                              'guests' => [
-                                 ['name' => 'Tamu Utama', 'is_primary' => true],
-                                 ['name' => 'Tamu Tambahan 1', 'is_primary' => false],
+                                 // Reservasi multi-kamar: tiap penghuni wajib ditempatkan ke kamar
+                                 ['name' => 'Tamu Utama', 'is_primary' => true, 'room_id' => $room1->id],
+                                 ['name' => 'Tamu Tambahan 1', 'is_primary' => false, 'room_id' => $room2->id],
                              ]
                          ]);
 

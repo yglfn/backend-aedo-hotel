@@ -9,37 +9,33 @@
         <tr>
             <th>Sumber</th>
             <th style="text-align:right">Jumlah Reservasi</th>
+            <th style="text-align:right">Porsi Reservasi</th>
             <th style="text-align:right">Total Pendapatan (Rp)</th>
+            <th style="text-align:right">Rata-rata / Reservasi (Rp)</th>
         </tr>
     </thead>
     <tbody>
-        @php $totalAmount = 0; $totalCount = 0; @endphp
-        @foreach($report['data'] as $row)
-        @php 
-            $totalAmount += $row->total_revenue;
-            $totalCount += $row->count;
-        @endphp
+        @forelse($report['data'] as $row)
         <tr>
-            <td>
-                @php
-                    $source = $row->source;
-                    if($source == 'walk_in') $source = 'Walk-In';
-                    elseif($source == 'phone') $source = 'Telepon';
-                    elseif($source == 'traveloka') $source = 'Traveloka';
-                    else $source = 'Lainnya';
-                @endphp
-                {{ $source }}
-            </td>
+            <td>{{ $row->label ?? $row->source }}</td>
             <td style="text-align:right">{{ $row->count }}</td>
+            <td style="text-align:right">{{ $row->share_percent }}%</td>
             <td style="text-align:right">{{ number_format($row->total_revenue, 0, ',', '.') }}</td>
+            <td style="text-align:right">{{ number_format($row->average_value, 0, ',', '.') }}</td>
         </tr>
-        @endforeach
+        @empty
+        <tr>
+            <td colspan="5" style="text-align:center; color:#777;">Tidak ada reservasi pada periode ini.</td>
+        </tr>
+        @endforelse
     </tbody>
     <tfoot>
         <tr style="font-weight:bold; background:#e0e0e0;">
             <td>TOTAL</td>
-            <td style="text-align:right">{{ $totalCount }}</td>
-            <td style="text-align:right">{{ number_format($totalAmount, 0, ',', '.') }}</td>
+            <td style="text-align:right">{{ $report['total_count'] }}</td>
+            <td style="text-align:right">100%</td>
+            <td style="text-align:right">{{ number_format($report['total_revenue'], 0, ',', '.') }}</td>
+            <td style="text-align:right">{{ number_format($report['total_count'] > 0 ? $report['total_revenue'] / $report['total_count'] : 0, 0, ',', '.') }}</td>
         </tr>
     </tfoot>
 </table>

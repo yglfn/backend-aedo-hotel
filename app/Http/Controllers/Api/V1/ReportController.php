@@ -2,16 +2,34 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\BookingSource;
+use App\Enums\BookingStatus;
+use App\Enums\RoomStatus;
 use App\Exports\ReportExport;
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Exceptions\InvalidFormatException;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
     public function __construct(protected ReportService $reportService) {}
+
+    /** Judul dokumen per jenis laporan; memakai Bahasa Indonesia, bukan nama route. */
+    protected const DOC_TITLE = [
+        'summary' => 'Ringkasan Laporan',
+        'occupancy' => 'Laporan Okupansi',
+        'revenue' => 'Laporan Pendapatan',
+        'reservations' => 'Laporan Reservasi',
+        'transactions' => 'Laporan Transaksi Pembayaran',
+        'payment-methods' => 'Laporan Metode Pembayaran',
+        'shifts' => 'Laporan Shift Pegawai',
+        'sources' => 'Laporan Sumber Reservasi',
+        'housekeeping' => 'Laporan Housekeeping',
+    ];
 
     // ---------------------------------------------------------------
     // Helper: kembalikan data, PDF, atau Excel berdasarkan ?format=
@@ -46,8 +64,11 @@ class ReportController extends Controller
     {
         [$rows, $headings] = $this->flattenForExcel($type, $data);
 
+        $period = ($data['period']['from'] ?? '') . ' s/d ' . ($data['period']['to'] ?? '');
+        $title = (self::DOC_TITLE[$type] ?? 'Laporan ' . ucfirst($type)) . ' (' . $period . ')';
+
         return Excel::download(
-            new ReportExport($rows, $headings, "Laporan " . ucfirst($type)),
+            new ReportExport($rows, $headings, $title),
             "laporan-{$type}-" . now()->format('Ymd') . '.xlsx'
         );
     }
@@ -58,12 +79,19 @@ class ReportController extends Controller
     protected function flattenForExcel(string $type, array $data): array
     {
         return match ($type) {
+            'summary' => [
+                $this->summaryRows($data),
+                ['Bagian', 'Ukuran', 'Nilai'],
+            ],
             'occupancy' => [
                 collect($data['per_room'])->map(fn($r) => [
                     $r->room_number,
+                    $r->room_type ?? '-',
+                    $r->floor ?? '-',
                     $r->occupied_nights,
+                    $r->room_rate . '%',
                 ])->toArray(),
-                ['No. Kamar', 'Malam Terisi'],
+                ['No. Kamar', 'Tipe Kamar', 'Lantai', 'Malam Terisi', '% Okupansi Kamar'],
             ],
             'revenue' => [
                 collect($data['daily'])->map(fn($r) => [
@@ -77,33 +105,41 @@ class ReportController extends Controller
                 collect($data['bookings'])->map(fn($b) => [
                     $b->booking_code,
                     $b->customer->name ?? '-',
-                    $b->check_in,
-                    $b->check_out,
+                    $b->check_in?->toDateString(),
+                    $b->check_out?->toDateString(),
+                    $b->bookingRooms->pluck('room.room_number')->filter()->implode(', ') ?: '-',
+                    $b->guest_count,
                     $b->status->value ?? $b->status,
-                    $b->total_price,
+                    (float) $b->total_price,
+                    (float) $b->paid_verified,
+                    (float) $b->remaining_due,
                 ])->toArray(),
-                ['Kode Booking', 'Tamu', 'Check-In', 'Check-Out', 'Status', 'Total (Rp)'],
+                ['Kode Booking', 'Tamu', 'Check-In', 'Check-Out', 'Kamar', 'Jumlah Tamu', 'Status', 'Total (Rp)', 'Terbayar (Rp)', 'Sisa (Rp)'],
             ],
             'transactions' => [
                 collect($data['payments'])->map(fn($p) => [
                     $p->id,
                     $p->booking->booking_code ?? '-',
+                    $p->booking->customer->name ?? '-',
                     $p->method->value ?? $p->method,
                     $p->type->value  ?? $p->type,
                     $p->status->value ?? $p->status,
-                    $p->amount,
+                    (float) $p->amount,
                     $p->paid_at,
                     $p->createdBy->name ?? '-',
+                    $p->verifiedBy->name ?? '-',
                 ])->toArray(),
-                ['ID', 'Kode Booking', 'Metode', 'Tipe', 'Status', 'Nominal (Rp)', 'Tanggal', 'Dicatat Oleh'],
+                ['ID', 'Kode Booking', 'Tamu', 'Metode', 'Tipe', 'Status', 'Nominal (Rp)', 'Tanggal', 'Dicatat Oleh', 'Diverifikasi Oleh'],
             ],
             'payment-methods' => [
                 collect($data['data'])->map(fn($r) => [
-                    $r->method,
+                    $r->label ?? $r->method,
                     $r->count,
                     $r->total,
+                    $r->share_percent . '%',
+                    $r->average,
                 ])->toArray(),
-                ['Metode', 'Jumlah Transaksi', 'Total (Rp)'],
+                ['Metode', 'Jumlah Transaksi', 'Total (Rp)', 'Porsi Nominal', 'Rata-rata per Transaksi (Rp)'],
             ],
             'shifts' => [
                 collect($data['shifts'])->map(fn($s) => [
@@ -111,18 +147,21 @@ class ReportController extends Controller
                     $s->started_at,
                     $s->ended_at ?? '-',
                     $s->status,
+                    $s->duration_hours ?? '-',
                     $s->total_transactions,
                     $s->total_collected,
                 ])->toArray(),
-                ['Pegawai', 'Mulai', 'Selesai', 'Status', 'Jumlah Transaksi', 'Total Dikumpulkan (Rp)'],
+                ['Pegawai', 'Mulai', 'Selesai', 'Status', 'Durasi (Jam)', 'Jumlah Transaksi', 'Total Dikumpulkan (Rp)'],
             ],
             'sources' => [
                 collect($data['data'])->map(fn($r) => [
-                    $r->source,
+                    $r->label ?? $r->source,
                     $r->count,
                     $r->total_revenue,
+                    $r->share_percent . '%',
+                    $r->average_value,
                 ])->toArray(),
-                ['Sumber', 'Jumlah Reservasi', 'Total Pendapatan (Rp)'],
+                ['Sumber', 'Jumlah Reservasi', 'Total Pendapatan (Rp)', 'Porsi Reservasi', 'Rata-rata per Reservasi (Rp)'],
             ],
             'housekeeping' => [
                 collect($data['tasks'])->map(fn($t) => [
@@ -138,54 +177,200 @@ class ReportController extends Controller
         };
     }
 
+    /**
+     * Ringkasan diubah jadi daftar baris [Bagian, Ukuran, Nilai] supaya satu sheet Excel
+     * memuat seluruh angka penting, termasuk tren harian dan rincian per metode/sumber.
+     */
+    protected function summaryRows(array $data): array
+    {
+        $revenue = $data['revenue'];
+        $occupancy = $data['occupancy'];
+        $reservations = $data['reservations'];
+        $shifts = $data['shifts'];
+        $housekeeping = $data['housekeeping'];
+        $rooms = $data['rooms'];
+        $highlights = $data['highlights'];
+
+        $rows = [
+            ['Periode', 'Rentang tanggal', $data['period']['from'] . ' s/d ' . $data['period']['to']],
+            ['Periode', 'Jumlah hari', $data['days']],
+            ['Periode', 'Pembanding', $data['previous_period']['from'] . ' s/d ' . $data['previous_period']['to']],
+
+            ['Pendapatan', 'Total terverifikasi (Rp)', $revenue['total_revenue']],
+            ['Pendapatan', 'Transaksi terverifikasi', $revenue['total_transactions']],
+            ['Pendapatan', 'Rata-rata per hari (Rp)', $revenue['average_per_day']],
+            ['Pendapatan', 'Tunai (Rp)', $revenue['cash_revenue']],
+            ['Pendapatan', 'Transfer (Rp)', $revenue['transfer_revenue']],
+            ['Pendapatan', 'QRIS (Rp)', $revenue['qris_revenue']],
+            ['Pendapatan', 'Refund terverifikasi (Rp)', $revenue['refund_total']],
+            ['Pendapatan', 'Menunggu verifikasi (transaksi)', $revenue['pending_count']],
+            ['Pendapatan', 'Menunggu verifikasi (Rp)', $revenue['pending_amount']],
+            ['Pendapatan', 'Periode sebelumnya (Rp)', $revenue['previous_revenue']],
+            ['Pendapatan', 'Perubahan (%)', $revenue['change_percent'] ?? 'belum ada pembanding'],
+
+            ['Okupansi', 'Tingkat okupansi (%)', $occupancy['occupancy_rate']],
+            ['Okupansi', 'Malam terisi', $occupancy['occupied_nights']],
+            ['Okupansi', 'Kamar-malam tersedia', $occupancy['total_room_nights']],
+            ['Okupansi', 'Kamar tidak pernah terisi', $occupancy['idle_rooms']],
+            ['Okupansi', 'Periode sebelumnya (%)', $occupancy['previous_rate']],
+            ['Okupansi', 'Perubahan (poin)', $occupancy['change_points']],
+
+            ['Reservasi', 'Jumlah reservasi', $reservations['total']],
+            ['Reservasi', 'Nilai reservasi (Rp)', $reservations['total_value']],
+            ['Reservasi', 'Periode sebelumnya (jumlah)', $reservations['previous_total']],
+            ['Reservasi', 'Perubahan (%)', $reservations['change_percent'] ?? 'belum ada pembanding'],
+        ];
+
+        foreach ($reservations['by_status'] as $status => $row) {
+            $rows[] = ['Reservasi per status', BookingStatus::tryFrom($status)?->label() ?? $status, $row['count']];
+        }
+
+        foreach ($data['payment_mix'] as $method) {
+            $rows[] = ['Metode bayar', $method->label, (float) $method->total];
+        }
+
+        foreach ($data['booking_sources'] as $source) {
+            $rows[] = ['Sumber reservasi', $source->label, (int) $source->count];
+        }
+
+        $rows[] = ['Shift', 'Jumlah shift', $shifts['total_shifts']];
+        $rows[] = ['Shift', 'Transaksi tercatat', $shifts['total_transactions']];
+        $rows[] = ['Shift', 'Kas terverifikasi (Rp)', $shifts['total_collected']];
+        $rows[] = ['Shift', 'Rata-rata per shift (Rp)', $shifts['average_collected']];
+
+        $rows[] = ['Housekeeping', 'Total tugas', $housekeeping['total']];
+        $rows[] = ['Housekeeping', 'Menunggu', $housekeeping['pending']];
+        $rows[] = ['Housekeeping', 'Sedang dikerjakan', $housekeeping['in_progress']];
+        $rows[] = ['Housekeeping', 'Selesai', $housekeeping['completed']];
+        $rows[] = ['Housekeeping', 'Tingkat penyelesaian (%)', $housekeeping['completion_rate']];
+        $rows[] = ['Housekeeping', 'Rata-rata durasi (jam)', $housekeeping['average_hours'] ?? '-'];
+
+        foreach (RoomStatus::cases() as $case) {
+            $rows[] = ['Kamar saat ini', $case->label(), $rooms[$case->value] ?? 0];
+        }
+        $rows[] = ['Kamar saat ini', 'Total kamar', $rooms['total']];
+
+        if ($highlights['best_day']) {
+            $rows[] = ['Sorotan', 'Pendapatan tertinggi (' . $highlights['best_day']['date'] . ')', (float) $highlights['best_day']['revenue']];
+        }
+
+        if ($highlights['best_room']) {
+            $rows[] = ['Sorotan', 'Kamar paling banyak dipakai (' . $highlights['best_room']['room_number'] . ')', $highlights['best_room']['occupied_nights']];
+        }
+
+        if ($highlights['top_source']) {
+            $label = BookingSource::tryFrom($highlights['top_source']['source'])?->label()
+                ?? $highlights['top_source']['source'];
+            $rows[] = ['Sorotan', 'Sumber reservasi terbanyak (' . $label . ')', $highlights['top_source']['count']];
+        }
+
+        foreach ($data['revenue_trend'] as $day) {
+            $rows[] = ['Tren pendapatan', $day->date, (float) $day->revenue];
+        }
+
+        return $rows;
+    }
+
     // ---------------------------------------------------------------
     // Endpoint per jenis laporan
     // ---------------------------------------------------------------
+
+    /**
+     * Periode dari query string. Tanggal yang tidak valid harus dijawab 422, bukan 500,
+     * karena periode kini ikut tersimpan di URL halaman laporan.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    protected function period(Request $request): array
+    {
+        $range = [];
+
+        foreach (['from', 'to'] as $key) {
+            $value = $request->query($key);
+
+            if ($value === null || $value === '') {
+                $range[$key] = null;
+                continue;
+            }
+
+            try {
+                $range[$key] = Carbon::parse((string) $value)->toDateString();
+            } catch (InvalidFormatException) {
+                abort(422, 'Format tanggal tidak valid. Gunakan YYYY-MM-DD.');
+            }
+        }
+
+        if ($range['from'] && $range['to'] && $range['from'] > $range['to']) {
+            abort(422, 'Tanggal awal tidak boleh lebih besar dari tanggal akhir.');
+        }
+
+        return [$range['from'], $range['to']];
+    }
+
+    /**
+     * Ringkasan semua laporan — satu-satunya laporan yang ditampilkan di layar
+     * Pusat Laporan, dan bisa diunduh sebagai PDF/Excel.
+     */
+    public function summary(Request $request)
+    {
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('summary', $this->reportService->summary($from, $to), $request);
+    }
+
     public function occupancy(Request $request)
     {
-        $data = $this->reportService->occupancy($request->from, $request->to);
-        return $this->respond('occupancy', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('occupancy', $this->reportService->occupancy($from, $to), $request);
     }
 
     public function revenue(Request $request)
     {
-        $data = $this->reportService->revenue($request->from, $request->to);
-        return $this->respond('revenue', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('revenue', $this->reportService->revenue($from, $to), $request);
     }
 
     public function reservations(Request $request)
     {
-        $data = $this->reportService->reservations($request->from, $request->to);
-        return $this->respond('reservations', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('reservations', $this->reportService->reservations($from, $to), $request);
     }
 
     public function transactions(Request $request)
     {
-        $data = $this->reportService->transactions($request->from, $request->to);
-        return $this->respond('transactions', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('transactions', $this->reportService->transactions($from, $to), $request);
     }
 
     public function paymentMethods(Request $request)
     {
-        $data = $this->reportService->paymentMethods($request->from, $request->to);
-        return $this->respond('payment-methods', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('payment-methods', $this->reportService->paymentMethods($from, $to), $request);
     }
 
     public function shifts(Request $request)
     {
-        $data = $this->reportService->shifts($request->from, $request->to);
-        return $this->respond('shifts', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('shifts', $this->reportService->shifts($from, $to), $request);
     }
 
     public function sources(Request $request)
     {
-        $data = $this->reportService->sources($request->from, $request->to);
-        return $this->respond('sources', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('sources', $this->reportService->sources($from, $to), $request);
     }
 
     public function housekeeping(Request $request)
     {
-        $data = $this->reportService->housekeeping($request->from, $request->to);
-        return $this->respond('housekeeping', $data, $request);
+        [$from, $to] = $this->period($request);
+
+        return $this->respond('housekeeping', $this->reportService->housekeeping($from, $to), $request);
     }
 }

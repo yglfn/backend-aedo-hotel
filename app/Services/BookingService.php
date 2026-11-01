@@ -169,18 +169,28 @@ class BookingService
                 'notes' => $data['notes'] ?? null,
             ]);
 
-            // 4. Simpan Relasi
+            // 4. Simpan Relasi. ID booking_room dibutuhkan untuk menautkan penghuni ke kamarnya.
+            $bookingRoomByRoomId = [];
             foreach ($bookingRoomsData as $brData) {
-                $booking->bookingRooms()->create($brData);
+                $createdRoom = $booking->bookingRooms()->create($brData);
+                $bookingRoomByRoomId[(int) $createdRoom->room_id] = $createdRoom;
             }
 
             foreach ($data['guests'] as $guest) {
+                $bookingRoom = $this->resolveGuestRoom($guest, $bookingRoomByRoomId);
+
                 $booking->bookingGuests()->create([
+                    'booking_room_id' => $bookingRoom?->id,
                     'name' => $guest['name'],
                     'ktp' => $guest['ktp'] ?? null,
+                    'phone' => $guest['phone'] ?? null,
                     'is_primary' => $guest['is_primary'],
                 ]);
             }
+
+            // Penempatan per kamar cuma diuji bila kasir memang memilih kamarnya,
+            // supaya reservasi lama (tanpa pemetaan) tidak ikut tertolak.
+            $this->assertRoomCapacity($booking, $bookingRoomByRoomId);
 
             foreach ($bookingServicesData as $bsData) {
                 $booking->bookingServices()->create($bsData);
@@ -205,9 +215,152 @@ class BookingService
     }
 
     /**
-     * Proses Check-In
+     * Menautkan satu baris tamu ke baris kamar pada reservasi yang sama.
+     *
+     * Reservasi satu kamar ditautkan otomatis (penempatannya tidak ambigu, jadi kasir
+     * tidak perlu memilih). Reservasi multi-kamar mewajibkan room_id diisi dan harus salah
+     * satu kamar pada reservasi itu - tidak boleh diam-diam menebak.
+     *
+     * @param array<int, BookingRoom> $bookingRoomByRoomId
      */
-    public function checkIn(Booking $booking, int $userId): Booking
+    protected function resolveGuestRoom(array $guest, array $bookingRoomByRoomId): ?BookingRoom
+    {
+        if (!$bookingRoomByRoomId) {
+            return null;
+        }
+
+        $roomId = (int) ($guest['room_id'] ?? 0);
+
+        if ($roomId === 0) {
+            if (count($bookingRoomByRoomId) === 1) {
+                return reset($bookingRoomByRoomId);
+            }
+
+            throw new Exception('Reservasi multi-kamar: setiap penghuni harus ditempatkan ke kamar.');
+        }
+
+        if (!isset($bookingRoomByRoomId[$roomId])) {
+            throw new Exception('Kamar yang ditugaskan untuk penghuni bukan bagian dari reservasi ini.');
+        }
+
+        return $bookingRoomByRoomId[$roomId];
+    }
+
+    /**
+     * Kapasitas per kamar. Hanya menghitung penghuni yang benar-benar ditugaskan ke kamar itu,
+     * jadi data yang belum ditempatkan tidak ikut menolak reservasi.
+     *
+     * @param array<int, BookingRoom> $bookingRoomByRoomId
+     */
+    protected function assertRoomCapacity(Booking $booking, array $bookingRoomByRoomId): void
+    {
+        if (!$bookingRoomByRoomId) {
+            return;
+        }
+
+        $terbagi = $booking->bookingGuests()
+            ->whereNotNull('booking_room_id')
+            ->select('booking_room_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('booking_room_id')
+            ->pluck('total', 'booking_room_id');
+
+        foreach ($bookingRoomByRoomId as $bookingRoom) {
+            $jumlah = (int) ($terbagi[$bookingRoom->id] ?? 0);
+            $batas  = (int) ($bookingRoom->room?->roomType?->max_person ?? 0);
+
+            if ($jumlah > 0 && $batas > 0 && $jumlah > $batas) {
+                throw new Exception(sprintf(
+                    'Kamar %s berkapasitas %d orang, tetapi %d penghuni ditugaskan ke kamar ini.',
+                    $bookingRoom->room?->room_number ?? $bookingRoom->room_id,
+                    $batas,
+                    $jumlah
+                ));
+            }
+        }
+    }
+
+    /**
+     * Menyimpan penghuni yang baru diketahui di meja resepsionis.
+     *
+     * Nama yang sudah tercatat tidak diduplikasi - kalau baris itu membawa room_id, penempatan
+     * kamarnya yang ditambal. Penambahan penghuni baru dibatasi sisa slot guest_count supaya
+     * check-in tidak bisa menyisipkan tamu di luar reservasi. Semua perubahan dicatat di audit log.
+     */
+    protected function recordMissingGuests(Booking $booking, array $guests, int $userId): void
+    {
+        $guests = array_values(array_filter(
+            is_array($guests) ? $guests : [],
+            fn ($guest) => trim((string) ($guest['name'] ?? '')) !== ''
+        ));
+
+        if (!$guests) {
+            return;
+        }
+
+        $dipesan = max(1, (int) $booking->guest_count);
+        $sisaSlot = max(0, $dipesan - $booking->bookingGuests()->count());
+
+        // room_id pada request mengacu ke kamar fisik, jadi dipetakan dulu ke booking_room
+        $roomMap = $booking->bookingRooms()->get()
+            ->mapWithKeys(fn (BookingRoom $bookingRoom) => [(int) $bookingRoom->room_id => $bookingRoom])
+            ->all();
+
+        $dikenal = $booking->bookingGuests()->get()
+            ->keyBy(fn (BookingGuest $guest) => mb_strtolower(trim($guest->name)));
+
+        $ditambahkan = 0;
+        $ditempatkan = 0;
+
+        foreach ($guests as $guest) {
+            $name = trim((string) $guest['name']);
+            $key  = mb_strtolower($name);
+            $bookingRoom = $this->resolveGuestRoom($guest, $roomMap);
+
+            if ($existing = $dikenal->get($key)) {
+                if ($bookingRoom && !$existing->booking_room_id) {
+                    $existing->booking_room_id = $bookingRoom->id;
+                    $existing->save();
+                    $ditempatkan++;
+                }
+                continue;
+            }
+
+            if ($ditambahkan >= $sisaSlot) {
+                break;
+            }
+
+            $created = $booking->bookingGuests()->create([
+                'booking_room_id' => $bookingRoom?->id,
+                'name' => $name,
+                'ktp' => $guest['ktp'] ?? null,
+                'phone' => $guest['phone'] ?? null,
+                'is_primary' => false,
+            ]);
+
+            $dikenal->put($key, $created);
+            $ditambahkan++;
+        }
+
+        if ($ditambahkan > 0 || $ditempatkan > 0) {
+            $this->assertRoomCapacity($booking, $roomMap);
+
+            AuditService::log('booking.guests_completed', $booking, [], [
+                'guests_added'  => $ditambahkan,
+                'guests_placed' => $ditempatkan,
+                'guest_count'   => $dipesan,
+                'oleh_user'     => $userId,
+            ]);
+        }
+    }
+
+    /**
+     * Proses Check-In.
+     *
+     * $guests opsional: penghuni yang belum tercatat saat reservasi bisa dilengkapi
+     * di meja resepsionis dalam request yang sama (Model C: data penghuni harus lengkap
+     * sebelum kamar dinyatakan terisi).
+     */
+    public function checkIn(Booking $booking, int $userId, array $guests = []): Booking
     {
         $statusValue = is_object($booking->status) ? $booking->status->value : $booking->status;
 
@@ -222,7 +375,29 @@ class BookingService
             );
         }
 
-        return DB::transaction(function () use ($booking, $userId) {
+        return DB::transaction(function () use ($booking, $userId, $guests) {
+            $this->recordMissingGuests($booking, $guests, $userId);
+
+            // "Catat tamu yang menginap" ditegakkan: jumlah nama harus menyamai guest_count.
+            $dipesan = max(1, (int) $booking->guest_count);
+            $tercatat = $booking->bookingGuests()->count();
+            if ($tercatat < $dipesan) {
+                throw new Exception(
+                    "Data penghuni belum lengkap: {$tercatat} dari {$dipesan} tamu tercatat. Lengkapi nama seluruh penghuni sebelum check-in."
+                );
+            }
+
+            // Multi-kamar: semua penghuni sudah harus punya kamar saat kamar dinyatakan terisi,
+            // supaya "siapa tidur di kamar mana" tidak menggantung setelah tamu masuk.
+            if ($booking->bookingRooms()->count() > 1) {
+                $belumDitempatkan = $booking->bookingGuests()->whereNull('booking_room_id')->count();
+                if ($belumDitempatkan > 0) {
+                    throw new Exception(
+                        "Penempatan kamar belum lengkap: {$belumDitempatkan} penghuni belum ditugaskan ke kamar."
+                    );
+                }
+            }
+
             $booking->status = BookingStatus::CheckedIn->value;
             $booking->save();
 

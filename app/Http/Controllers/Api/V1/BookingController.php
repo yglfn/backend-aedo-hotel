@@ -80,7 +80,19 @@ class BookingController extends Controller
 
     public function show(Booking $booking)
     {
-        $booking->load(['customer', 'bookingRooms.room.roomType', 'bookingGuests', 'bookingServices.service', 'createdBy']);
+        // Layar detail butuh riwayat bayar lengkap (siapa mencatat, siapa memverifikasi)
+        // dan invoice aktif, bukan hanya daftar relasi inti.
+        $booking->load([
+            'customer',
+            'bookingRooms.room.roomType',
+            'bookingGuests',
+            'bookingServices.service',
+            'createdBy',
+            'invoice',
+            'payments.createdBy',
+            'payments.verifiedBy',
+        ]);
+
         return response()->json(['data' => $booking]);
     }
 
@@ -114,8 +126,20 @@ class BookingController extends Controller
 
     public function checkIn(Request $request, Booking $booking)
     {
+        // Penghuni yang belum tercatat saat reservasi boleh dikirim sekaligus di sini.
+        $validated = $request->validate([
+            'guests' => 'nullable|array',
+            'guests.*.name' => 'required_with:guests|string|max:255',
+            'guests.*.ktp' => 'nullable|string',
+            'guests.*.phone' => 'nullable|string|max:20',
+            'guests.*.room_id' => 'nullable|integer|exists:rooms,id',
+        ], [
+            'guests.*.name.required_with' => 'Nama penghuni wajib diisi.',
+            'guests.*.room_id.exists' => 'Kamar penghuni harus salah satu kamar pada reservasi ini.',
+        ]);
+
         try {
-            $updatedBooking = $this->bookingService->checkIn($booking, $request->user()->id);
+            $updatedBooking = $this->bookingService->checkIn($booking, $request->user()->id, $validated['guests'] ?? []);
             return response()->json([
                 'message' => 'Check-In berhasil.',
                 'data' => $updatedBooking

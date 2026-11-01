@@ -787,8 +787,8 @@ class QaBackendAuditTest extends TestCase
             });
 
         $this->case($g, 'Reservasi multi-kamar', 'Satu booking bisa memakai beberapa kamar sekaligus.',
-            '1) buat 2 kamar 2) POST /bookings dengan rooms[2]', '2 kamar @300.000 x 2 malam, guest_count=3',
-            'HTTP 201; 2 baris booking_rooms; total = 1.200.000 + pajak',
+            '1) buat 2 kamar 2) POST /bookings dengan rooms[2] + room_id per penghuni', '2 kamar @300.000 x 2 malam, guest_count=3',
+            'HTTP 201; 2 baris booking_rooms; total = 1.200.000 + pajak; tiap penghuni tertaut kamar',
             function () {
                 $n        = ++$this->roomSeq;
                 $customer = Customer::create(['name' => "Tamu Multi {$n}", 'phone' => '0812900' . str_pad((string) $n, 4, '0', STR_PAD_LEFT)]);
@@ -800,15 +800,51 @@ class QaBackendAuditTest extends TestCase
                     'customer_id' => $customer->id, 'source' => 'walk_in',
                     'check_in' => now()->format('Y-m-d'), 'check_out' => now()->addDays(2)->format('Y-m-d'),
                     'guest_count' => 3, 'rooms' => [$r1->id, $r2->id],
-                    'guests' => [['name' => "Tamu Multi {$n}", 'is_primary' => true]],
+                    'guests' => [
+                        ['name' => "Tamu Multi {$n}", 'is_primary' => true, 'room_id' => $r1->id],
+                        ['name' => "Pendamping A {$n}", 'is_primary' => false, 'room_id' => $r1->id],
+                        ['name' => "Pendamping B {$n}", 'is_primary' => false, 'room_id' => $r2->id],
+                    ],
                 ]);
                 $booking = Booking::find($resp->json('data.id'));
                 $count   = DB::table('booking_rooms')->where('booking_id', $booking?->id)->count();
                 $expected = 1200000 * 1.11;
+                $placed   = $booking ? DB::table('booking_guests')->where('booking_id', $booking->id)->whereNotNull('booking_room_id')->count() : 0;
 
-                return [$this->describe($resp) . ' | baris booking_rooms=' . $count . ', total=' . $this->money((float) $booking?->total_price),
-                    $resp->getStatusCode() === 201 && $count === 2 && abs((float) $booking->total_price - $expected) < 1.0,
-                    'guest_count 3 diizinkan karena total kapasitas 2 kamar = 4 orang.'];
+                return [$this->describe($resp) . ' | baris booking_rooms=' . $count . ', penghuni tertaut kamar=' . $placed . ', total=' . $this->money((float) $booking?->total_price),
+                    $resp->getStatusCode() === 201 && $count === 2 && $placed === 3 && abs((float) $booking->total_price - $expected) < 1.0,
+                    'guest_count 3 diizinkan karena total kapasitas 2 kamar = 4 orang (2 + 2).'];
+            });
+
+        $this->case($g, 'Multi-kamar wajib penempatan', 'Tanpa room_id, "siapa tidur di kamar mana" tidak bisa dipertanggungjawabkan.',
+            '1) POST /bookings rooms[2] tanpa guests[].room_id', '2 kamar, 1 penghuni tanpa kamar',
+            'HTTP 422 dengan pesan pilih kamar untuk setiap penghuni',
+            function () {
+                $n        = ++$this->roomSeq;
+                $customer = Customer::create(['name' => "Tamu Tanpa Kamar {$n}", 'phone' => '0812955' . str_pad((string) $n, 4, '0', STR_PAD_LEFT)]);
+                $type     = RoomType::create(['name' => "QA Tanpa Kamar {$n}", 'price' => 250000, 'max_person' => 2]);
+                $r1       = Room::create(['room_type_id' => $type->id, 'room_number' => 'QN' . $n . 'A']);
+                $r2       = Room::create(['room_type_id' => $type->id, 'room_number' => 'QN' . $n . 'B']);
+
+                $resp = $this->req('POST', '/api/v1/bookings', $this->admin, [
+                    'customer_id' => $customer->id, 'source' => 'walk_in',
+                    'check_in' => now()->addDays(20)->format('Y-m-d'), 'check_out' => now()->addDays(21)->format('Y-m-d'),
+                    'guest_count' => 2, 'rooms' => [$r1->id, $r2->id],
+                    'guests' => [['name' => "Tamu Tanpa Kamar {$n}", 'is_primary' => true]],
+                ]);
+
+                return [$this->describe($resp), $resp->getStatusCode() === 422];
+            });
+
+        $this->case($g, 'Satu kamar ditautkan otomatis', 'Penempatan tidak ambigu bila reservasi cuma pakai satu kamar.',
+            '1) POST /bookings rooms[1] tanpa room_id 2) cek booking_guests', '1 kamar, 1 penghuni',
+            'HTTP 201 dan booking_room_id penghuni terisi sendiri',
+            function () {
+                $b = $this->mkBooking(1, 250000);
+                $guest = DB::table('booking_guests')->where('booking_id', $b['booking']->id)->first();
+
+                return ['booking=' . ($b['booking']->booking_code ?? '-') . ', booking_room_id=' . ($guest->booking_room_id ?? 'NULL'),
+                    $b['response']->getStatusCode() === 201 && !empty($guest->booking_room_id)];
             });
 
         $this->case($g, 'Cegah double booking (irisan tanggal)', 'Kamar yang sama tidak bisa dijual dua kali pada periode yang tumpang tindih.',

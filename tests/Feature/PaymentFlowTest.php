@@ -54,7 +54,11 @@ class PaymentFlowTest extends TestCase
             'check_out'   => now()->addDays(2)->format('Y-m-d'),
             'guest_count' => 2,
             'rooms'       => [$room->id],
-            'guests'      => [['name' => 'Tamu Alur Bayar', 'is_primary' => true]],
+            // Check-in kini menuntut nama seluruh penghuni (Model C), jadi tamu kedua ikut dicatat
+            'guests'      => [
+                ['name' => 'Tamu Alur Bayar', 'is_primary' => true],
+                ['name' => 'Tamu Pendamping', 'is_primary' => false],
+            ],
         ]);
 
         $response->assertStatus(201);
