@@ -132,7 +132,7 @@ class BookingService
                     $bookingServicesData[] = [
                         'service_id' => $service->id,
                         'price_at_transaction' => $service->price,
-                        'qty' => $svc['qty'],
+                        'quantity' => $svc['qty'],
                         'total' => $total,
                     ];
                 }
@@ -211,6 +211,51 @@ class BookingService
             }
 
             return $booking;
+        });
+    }
+
+    public function addServices(Booking $booking, array $services): Booking
+    {
+        return DB::transaction(function () use ($booking, $services) {
+            if (in_array($booking->status->value, [BookingStatus::Cancelled->value, BookingStatus::CheckedOut->value], true)) {
+                throw new Exception('Layanan tidak dapat ditambahkan pada reservasi yang sudah selesai atau dibatalkan.');
+            }
+
+            $serviceIds = collect($services)->pluck('service_id')->unique()->values();
+            $serviceMap = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+
+            foreach ($services as $item) {
+                $service = $serviceMap->get($item['service_id']);
+                if (!$service || !$service->is_active) {
+                    throw new Exception('Layanan tambahan tidak valid atau tidak aktif.');
+                }
+
+                $quantity = (int) $item['qty'];
+                $existing = $booking->bookingServices()->where('service_id', $service->id)->first();
+                if ($existing) {
+                    $quantity += (int) $existing->quantity;
+                    $existing->update([
+                        'quantity' => $quantity,
+                        'total' => $service->price * $quantity,
+                    ]);
+                } else {
+                    $booking->bookingServices()->create([
+                        'service_id' => $service->id,
+                        'price_at_transaction' => $service->price,
+                        'quantity' => $quantity,
+                        'total' => $service->price * $quantity,
+                    ]);
+                }
+            }
+
+            $invoice = $booking->invoice;
+            if (!$invoice) {
+                $invoice = $this->invoiceService->createForBooking($booking);
+            } else {
+                $this->invoiceService->recalculate($invoice);
+            }
+
+            return $booking->fresh(['bookingServices.service', 'invoice']);
         });
     }
 

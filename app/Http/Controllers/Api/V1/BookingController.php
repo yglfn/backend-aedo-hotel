@@ -7,6 +7,7 @@ use App\Exceptions\RoomUnavailableException;
 use App\Models\Booking;
 use App\Services\BookingService;
 use App\Http\Requests\StoreBookingRequest;
+use App\Http\Requests\AddBookingServicesRequest;
 use App\Http\Requests\CancelBookingRequest;
 use Illuminate\Http\Request;
 use Exception;
@@ -74,6 +75,23 @@ class BookingController extends Controller
             return response()->json([
                 'message' => 'Gagal membuat reservasi.',
                 'error' => $e->getMessage()
+            ], 422);
+        }
+    }
+
+    public function addServices(AddBookingServicesRequest $request, Booking $booking)
+    {
+        try {
+            $updatedBooking = $this->bookingService->addServices($booking, $request->validated('services'));
+
+            return response()->json([
+                'message' => 'Layanan reservasi berhasil ditambahkan.',
+                'data' => $updatedBooking,
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menambahkan layanan reservasi.',
+                'error' => $e->getMessage(),
             ], 422);
         }
     }

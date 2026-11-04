@@ -739,10 +739,14 @@ class QaBackendAuditTest extends TestCase
                 $customer = Customer::create(['name' => 'Tamu Enkripsi', 'phone' => '081231110002', 'ktp' => '3201000000000001']);
                 $raw = (string) DB::table('customers')->where('id', $customer->id)->value('ktp');
                 $api = $this->req('GET', "/api/v1/customers/{$customer->id}", $this->admin)->json('data.ktp');
+                $listedResponse = $this->req('GET', '/api/v1/customers?search=' . urlencode('Tamu Enkripsi'), $this->admin);
+                $listed = $listedResponse->json('data.0.ktp') ?? $listedResponse->json('data.data.0.ktp');
 
-                return ['raw=' . substr($raw, 0, 24) . '… | nilai via API=' . $api,
-                    $raw !== '3201000000000001' && $api === '3201000000000001',
-                    'Enkripsi level aplikasi (cast encrypted).'];
+                return ['raw=' . substr($raw, 0, 24) . '… | detail=' . $api . ' | list=' . $listed,
+                    $raw !== '3201000000000001'
+                        && $api === '3201000000000001'
+                        && $listed === '3201••••••••0001',
+                    'Database tetap terenkripsi; list API melakukan masking KTP.'];
             });
 
         $this->case($g, 'Tamu dengan histori tidak bisa dihapus', 'Riwayat harus tersimpan untuk laporan/audit.',

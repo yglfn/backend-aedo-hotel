@@ -123,7 +123,7 @@ class PaymentService
      */
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
     {
-        $path = $file->store('payment-proofs', 'public');
+        $path = $file->store('payment-proofs', 'local');
         $payment->update(['proof_of_payment' => $path]);
 
         $payment = $payment->fresh();

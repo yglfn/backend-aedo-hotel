@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\HousekeepingController;
 use App\Http\Controllers\Api\V1\MaintenanceController;
 use App\Http\Controllers\Api\V1\RoomController;
 use App\Http\Controllers\Api\V1\RoomTypeController;
+use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\ShiftController;
@@ -27,6 +28,9 @@ Route::prefix('v1')->group(function () {
 
         // Dashboard
         Route::get('/dashboard', [DashboardController::class, 'index']);
+
+        Route::get('/reviews', [ReviewController::class, 'index']);
+        Route::post('/bookings/{booking}/review', [ReviewController::class, 'store']);
 
         // Shifts
         Route::prefix('shifts')->group(function () {
@@ -91,6 +95,7 @@ Route::prefix('v1')->group(function () {
         // Bookings
         Route::get('/bookings', [\App\Http\Controllers\Api\V1\BookingController::class, 'index']);
         Route::post('/bookings', [\App\Http\Controllers\Api\V1\BookingController::class, 'store']);
+        Route::post('/bookings/{booking}/services', [\App\Http\Controllers\Api\V1\BookingController::class, 'addServices']);
         Route::get('/bookings/{booking}', [\App\Http\Controllers\Api\V1\BookingController::class, 'show']);
         Route::post('/bookings/{booking}/confirm', [\App\Http\Controllers\Api\V1\BookingController::class, 'confirm']);
         Route::post('/bookings/{booking}/check-in', [\App\Http\Controllers\Api\V1\BookingController::class, 'checkIn']);
@@ -107,6 +112,7 @@ Route::prefix('v1')->group(function () {
         // mewajibkan shift berjalan (AGENTS.md bagian 6 butir 9)
         Route::get('/payments', [\App\Http\Controllers\Api\V1\PaymentController::class, 'index']);
         Route::get('/payments/{payment}', [\App\Http\Controllers\Api\V1\PaymentController::class, 'show']);
+        Route::get('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'downloadProof']);
         Route::post('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'uploadProof']);
 
         Route::middleware('shift')->group(function () {

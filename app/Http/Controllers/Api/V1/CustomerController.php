@@ -29,7 +29,18 @@ class CustomerController extends Controller
 
         $perPage = max(1, min((int) $request->input('per_page', 15), 100));
 
-        return response()->json($query->orderByDesc('created_at')->paginate($perPage));
+        $customers = $query->orderByDesc('created_at')->paginate($perPage);
+        $customers->getCollection()->transform(function (Customer $customer) {
+            if ($customer->ktp && strlen($customer->ktp) >= 8) {
+                $customer->ktp = substr($customer->ktp, 0, 4)
+                    . str_repeat('•', strlen($customer->ktp) - 8)
+                    . substr($customer->ktp, -4);
+            }
+
+            return $customer;
+        });
+
+        return response()->json($customers);
     }
 
     public function store(Request $request)

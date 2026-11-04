@@ -9,6 +9,8 @@ use App\Models\Booking;
 use App\Models\Payment;
 use App\Services\PaymentService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Exception;
 
 class PaymentController extends Controller
@@ -82,8 +84,19 @@ class PaymentController extends Controller
      */
     public function show(Payment $payment)
     {
+        Gate::authorize('view', $payment);
         $payment->load(['booking', 'invoice', 'createdBy', 'verifiedBy', 'shift']);
         return response()->json(['data' => $payment]);
+    }
+
+    public function downloadProof(Payment $payment)
+    {
+        Gate::authorize('downloadProof', $payment);
+
+        abort_unless($payment->proof_of_payment, 404, 'Bukti pembayaran tidak tersedia.');
+        abort_unless(Storage::disk('local')->exists($payment->proof_of_payment), 404, 'File bukti pembayaran tidak ditemukan.');
+
+        return Storage::disk('local')->download($payment->proof_of_payment);
     }
 
     /**
@@ -91,6 +104,8 @@ class PaymentController extends Controller
      */
     public function uploadProof(Request $request, Payment $payment)
     {
+        Gate::authorize('uploadProof', $payment);
+
         $request->validate([
             'proof' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
         ]);
