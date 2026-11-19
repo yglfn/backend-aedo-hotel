@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Models\Shift;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Exception;
 
 class PaymentService
@@ -123,8 +124,13 @@ class PaymentService
      */
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
     {
+        $oldPath = $payment->proof_of_payment;
         $path = $file->store('payment-proofs', 'local');
         $payment->update(['proof_of_payment' => $path]);
+
+        if ($oldPath && $oldPath !== $path) {
+            Storage::disk('local')->delete($oldPath);
+        }
 
         $payment = $payment->fresh();
 

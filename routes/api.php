@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\HousekeepingController;
 use App\Http\Controllers\Api\V1\MaintenanceController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\RoomController;
 use App\Http\Controllers\Api\V1\RoomTypeController;
 use App\Http\Controllers\Api\V1\ReviewController;
@@ -135,6 +136,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/sources', [\App\Http\Controllers\Api\V1\ReportController::class, 'sources']);
             Route::get('/housekeeping', [\App\Http\Controllers\Api\V1\ReportController::class, 'housekeeping']);
         });
+
+        // Notifications
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
+        Route::post('/notifications/{id}/read', [NotificationController::class, 'read']);
 
         // Housekeeping
         Route::get('/housekeeping-tasks', [HousekeepingController::class, 'index']);
