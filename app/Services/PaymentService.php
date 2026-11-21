@@ -12,7 +12,6 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\Shift;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Exception;
@@ -79,12 +78,25 @@ class PaymentService
                 ->where('status', 'open')
                 ->value('id');
 
-            // Tunai = langsung verified. Transfer / QRIS manual = pending, lalu dicoba
-            // diverifikasi OTOMATIS bila buktinya lengkap (pengganti approval admin).
-            $isCash     = $method === PaymentMethod::Cash->value;
-            $status     = $isCash ? PaymentStatus::Verified->value : PaymentStatus::Pending->value;
-            $paidAt     = $isCash ? now() : null;
+            // Tunai = langsung verified. Transfer/QRIS mengikuti saklar verifikasi:
+            // bila verifikasi nonaktif, pembayaran langsung dianggap lunas tanpa bukti.
+            $isCash       = $method === PaymentMethod::Cash->value;
+            $isManualBank = in_array($method, [PaymentMethod::Transfer->value, PaymentMethod::Qris->value], true);
+            $isDeposit    = in_array($type, [PaymentType::Dp->value, PaymentType::Final->value], true);
+
+            $verificationEnabled = (bool) (Setting::first()?->payment_verification_enabled ?? true);
+            $settleImmediately   = $isCash || (!$verificationEnabled && $isManualBank && $isDeposit);
+
+            $status     = $settleImmediately ? PaymentStatus::Verified->value : PaymentStatus::Pending->value;
+            $paidAt     = $settleImmediately ? now() : null;
             $verifiedBy = $isCash ? $userId : null;
+
+            $notes = $data['notes'] ?? null;
+            if ($isManualBank && $settleImmediately) {
+                $notes = trim((string) $notes) !== ''
+                    ? $notes . ' | Diverifikasi otomatis (verifikasi pembayaran nonaktif)'
+                    : 'Diverifikasi otomatis (verifikasi pembayaran nonaktif)';
+            }
 
             $payment = Payment::create([
                 'booking_id'       => $booking->id,
@@ -97,14 +109,16 @@ class PaymentService
                 'status'           => $status,
                 'amount'           => $amount,
                 'reference_number' => $data['reference_number'] ?? null,
-                'notes'            => $data['notes'] ?? null,
+                'notes'            => $notes,
                 'paid_at'          => $paidAt,
             ]);
 
-            // Transfer/QRIS yang referensinya sudah tercatat lengkap tidak perlu menunggu
-            // admin membuka sistem; kalau belum lengkap tetap pending untuk di-approve.
-            if ($status === PaymentStatus::Pending->value) {
-                $this->autoVerifyIfEligible($payment);
+            if ($isManualBank && $settleImmediately) {
+                AuditService::log('payment.auto_verified', $payment, ['status' => PaymentStatus::Pending->value], [
+                    'status' => PaymentStatus::Verified->value,
+                    'amount' => $amount,
+                    'reason' => 'verification_disabled',
+                ]);
             }
 
             // Cek apakah invoice sudah lunas (hanya hitung verified)
@@ -120,6 +134,7 @@ class PaymentService
     }
 
     /**
+<<<<<<< HEAD
      * Upload bukti pembayaran.
      */
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
@@ -234,6 +249,8 @@ class PaymentService
     }
 
     /**
+=======
+>>>>>>> 41c14b4 (fix: add sessions table migration)
      * Reversal (post-audit): admin membatalkan pembayaran yang sudah terverifikasi.
      * Ini kontrol pengganti "approve di depan": sistem jalan otomatis, manusia mengawasi
      * pengecualian. Tidak bisa dilakukan bila tamu sudah check-out/dibatalkan.

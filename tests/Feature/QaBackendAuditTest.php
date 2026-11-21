@@ -20,10 +20,8 @@ use App\Models\Service;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -242,16 +240,6 @@ class QaBackendAuditTest extends TestCase
         }
 
         return is_scalar($value) ? (string) $value : (is_array($value) ? json_encode($value) : '-');
-    }
-
-    /** Bukti bayar bisa tersimpan di disk local maupun public. */
-    private function proofOnDisk(string $path): bool
-    {
-        if ($path === '') {
-            return false;
-        }
-
-        return Storage::disk('local')->exists($path) || Storage::disk('public')->exists($path);
     }
 
     // =====================================================================
@@ -1230,22 +1218,25 @@ class QaBackendAuditTest extends TestCase
                     $rej->getStatusCode() === 200 && $rej->json('data.status') === PaymentStatus::Failed->value && $cash->getStatusCode() === 201];
             });
 
-        $this->case($g, 'Upload bukti transfer', 'Bukti bayar disimpan untuk audit admin.',
-            '1) catat transfer 2) POST /payments/{id}/proof (multipart)', 'file=bukti-transfer.jpg 12KB',
-            'HTTP 200 dengan path bukti tersimpan di storage',
+        $this->case($g, 'Verifikasi nonaktif melunasi transfer langsung', 'Saklar verifikasi pembayaran di pengaturan admin.',
+            '1) nonaktifkan verifikasi 2) catat transfer', 'payment_verification_enabled=false, amount=250.000',
+            'HTTP 201 dengan status verified tanpa upload bukti',
             function () {
-                Storage::fake('local');
-                $b    = $this->mkBooking()['booking'];
-                $pid  = $this->req('POST', "/api/v1/bookings/{$b->id}/payments", $this->admin, ['amount' => 250000, 'method' => 'transfer', 'type' => 'dp', 'reference_number' => 'TRF-QA-004'])->json('data.id');
-                $resp = $this->actingAs($this->admin)->postJson("/api/v1/payments/{$pid}/proof", [
-                    'proof' => UploadedFile::fake()->create('bukti-transfer.jpg', 12, 'image/jpeg'),
-                ]);
-                $saved = (string) (Payment::find($pid)?->proof_of_payment ?? '');
+                $setting = Setting::first();
+                $setting->update(['payment_verification_enabled' => false]);
 
-                return [$this->describe($resp) . ' | path=' . ($saved ?: 'KOSONG')
-                    . ', file di storage=' . ($this->proofOnDisk($saved) ? 'ada' : 'TIDAK'),
-                    $resp->getStatusCode() === 200 && $saved !== '' && $this->proofOnDisk($saved),
-                    'Nomor referensi unik + nominal cocok membuat bukti ini terverifikasi otomatis (lihat pesan response).'];
+                $b    = $this->mkBooking()['booking'];
+                $resp = $this->req('POST', "/api/v1/bookings/{$b->id}/payments", $this->admin, ['amount' => 250000, 'method' => 'transfer', 'type' => 'dp']);
+                $row  = Payment::find($resp->json('data.id'));
+
+                $setting->update(['payment_verification_enabled' => true]);
+
+                return [$this->describe($resp) . ' | status=' . $resp->json('data.status')
+                    . ' | bukti=' . ($row?->proof_of_payment ?: 'tanpa file'),
+                    $resp->getStatusCode() === 201
+                        && $resp->json('data.status') === PaymentStatus::Verified->value
+                        && $row !== null
+                        && $row->proof_of_payment === null];
             });
 
         $this->case($g, 'Reversal pembayaran butuh alasan', 'Pembatalan pembayaran verified (post-audit).',

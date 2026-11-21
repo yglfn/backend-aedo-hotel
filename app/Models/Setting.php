@@ -15,17 +15,15 @@ class Setting extends Model
         'default_check_out',
         'tax_percentage',
         'min_dp_percentage',
-        'auto_verify_transfers',
-        'auto_verify_max_amount',
+        'payment_verification_enabled',
     ];
 
     protected function casts(): array
     {
         return [
-            'tax_percentage'         => 'decimal:2',
-            'min_dp_percentage'      => 'decimal:2',
-            'auto_verify_transfers'  => 'boolean',
-            'auto_verify_max_amount' => 'decimal:2',
+            'tax_percentage'               => 'decimal:2',
+            'min_dp_percentage'            => 'decimal:2',
+            'payment_verification_enabled' => 'boolean',
         ];
     }
 

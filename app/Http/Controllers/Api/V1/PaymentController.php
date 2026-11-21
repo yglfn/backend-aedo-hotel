@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePaymentRequest;
-use App\Enums\PaymentStatus;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Services\PaymentService;
@@ -97,29 +96,6 @@ class PaymentController extends Controller
         abort_unless(Storage::disk('local')->exists($payment->proof_of_payment), 404, 'File bukti pembayaran tidak ditemukan.');
 
         return Storage::disk('local')->download($payment->proof_of_payment);
-    }
-
-    /**
-     * Upload bukti pembayaran (untuk transfer).
-     */
-    public function uploadProof(Request $request, Payment $payment)
-    {
-        Gate::authorize('uploadProof', $payment);
-
-        $request->validate([
-            'proof' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
-        ]);
-
-        $updated = $this->paymentService->uploadProof($payment, $request->file('proof'));
-        $autoVerified = $updated->status->value === PaymentStatus::Verified->value;
-
-        return response()->json([
-            'message' => $autoVerified
-                ? 'Bukti tersimpan; pembayaran terverifikasi otomatis (referensi unik + nominal sesuai).'
-                : 'Bukti pembayaran berhasil diunggah.',
-            'auto_verified' => $autoVerified,
-            'data'          => $updated,
-        ]);
     }
 
     /**

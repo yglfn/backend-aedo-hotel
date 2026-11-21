@@ -114,7 +114,6 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments', [\App\Http\Controllers\Api\V1\PaymentController::class, 'index']);
         Route::get('/payments/{payment}', [\App\Http\Controllers\Api\V1\PaymentController::class, 'show']);
         Route::get('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'downloadProof']);
-        Route::post('/payments/{payment}/proof', [\App\Http\Controllers\Api\V1\PaymentController::class, 'uploadProof']);
 
         Route::middleware('shift')->group(function () {
             Route::post('/bookings/{booking}/payments', [\App\Http\Controllers\Api\V1\PaymentController::class, 'store']);

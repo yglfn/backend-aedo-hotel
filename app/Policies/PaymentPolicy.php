@@ -12,11 +12,6 @@ class PaymentPolicy
         return $user->isAdmin() || $user->isPegawai();
     }
 
-    public function uploadProof(User $user, Payment $payment): bool
-    {
-        return $user->isAdmin() || $user->isPegawai();
-    }
-
     public function downloadProof(User $user, Payment $payment): bool
     {
         return $user->isAdmin() || $user->isPegawai();
