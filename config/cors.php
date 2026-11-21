@@ -20,11 +20,11 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        env('FRONTEND_URL', 'http://127.0.0.1:5173'),
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-        'http://localhost:3000',
-        'http://backend-aedo-hotel.test',
+      'https://frontend-aedo-hotel-kappa.vercel.app',
+    'https://frontend-aedo-hotel.vercel.app',
+    'https://frontend-aedo-hotel-git-master-yglfns-projects.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     ],
 
     'allowed_origins_patterns' => [],
