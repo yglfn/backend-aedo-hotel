@@ -9,6 +9,7 @@ use App\Services\BookingService;
 use App\Http\Requests\StoreBookingRequest;
 use App\Http\Requests\AddBookingServicesRequest;
 use App\Http\Requests\CancelBookingRequest;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Exception;
 
@@ -178,6 +179,10 @@ class BookingController extends Controller
                 'message' => 'Check-Out berhasil.',
                 'data' => $updatedBooking
             ]);
+        } catch (QueryException $e) {
+            // Kegagalan infrastruktur (mis. tabel hilang / koneksi DB) bukan penolakan aturan bisnis.
+            // Biarkan naik agar framework merender HTTP 500, bukan 422 yang menyesatkan.
+            throw $e;
         } catch (Exception $e) {
             return response()->json([
                 'message' => 'Gagal melakukan Check-Out.',
