@@ -11,6 +11,7 @@ use App\Models\RoomType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class HousekeepingNotificationTest extends TestCase
@@ -35,14 +36,12 @@ class HousekeepingNotificationTest extends TestCase
             'status' => HousekeepingStatus::Pending,
         ]);
 
-        $this->assertDatabaseHas('notifications', [
-            'notifiable_id' => $pegawai->id,
-            'data' => json_encode([
-                'task_id' => 1,
-                'room_id' => $room->id,
-                'message' => "Kamar {$room->room_number} perlu dibersihkan",
-            ]),
-        ]);
+        $notification = $pegawai->notifications()->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame($room->id, $notification->data['room_id']);
+        $this->assertSame("Kamar {$room->room_number} perlu dibersihkan", $notification->data['message']);
+        $this->assertSame('/housekeeping', $notification->data['action_url']);
         $this->assertDatabaseMissing('notifications', ['notifiable_id' => $inactive->id]);
     }
 
@@ -89,6 +88,31 @@ class HousekeepingNotificationTest extends TestCase
         $response = $this->actingAs($pegawai)->getJson('/api/v1/notifications')->assertOk();
         $response->assertJsonPath('unread_count', 1);
         $response->assertJsonCount(2, 'data');
+        $response->assertJsonFragment([
+            'category' => 'housekeeping',
+            'action_url' => '/housekeeping',
+        ]);
+    }
+
+    public function test_read_all_only_marks_the_authenticated_users_notifications(): void
+    {
+        $owner = User::factory()->create(['role' => UserRole::Pegawai, 'is_active' => true]);
+        $other = User::factory()->create(['role' => UserRole::Pegawai, 'is_active' => true]);
+
+        foreach ([$owner, $other] as $user) {
+            DatabaseNotification::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'App\\Notifications\\RoomNeedsCleaning',
+                'notifiable_type' => User::class,
+                'notifiable_id' => $user->id,
+                'data' => ['message' => 'Kamar 101 perlu dibersihkan'],
+            ]);
+        }
+
+        $this->actingAs($owner)->postJson('/api/v1/notifications/read-all')->assertOk();
+
+        $this->assertSame(0, $owner->unreadNotifications()->count());
+        $this->assertSame(1, $other->unreadNotifications()->count());
     }
 
     private function createRoom(): Room

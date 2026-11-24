@@ -17,6 +17,7 @@
     { "key": "user_id", "value": "", "type": "string" },
     { "key": "maintenance_id", "value": "", "type": "string" },
     { "key": "housekeeping_id", "value": "", "type": "string" },
+    { "key": "notification_id", "value": "", "type": "string" },
     { "key": "xsrf_token", "value": "", "type": "string" }
   ],
   "event": [
@@ -216,6 +217,38 @@
             "method": "PUT",
             "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"hotel_name\": \"Aedo Hotel Syariah\",\n  \"hotel_address\": \"Jl. Contoh No. 1, Kota\",\n  \"hotel_phone\": \"0291-123456\",\n  \"hotel_email\": \"info@aedohotel.com\",\n  \"default_check_in\": \"14:00:00\",\n  \"default_check_out\": \"12:00:00\",\n  \"tax_percentage\": 11\n}" },
+            "url": { "raw": "{{base_url}}/api/v1/settings", "host": ["{{base_url}}"], "path": ["api", "v1", "settings"] }
+          }
+        },
+        {
+          "name": "Lihat Foto Profil Hotel",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "image/*" }],
+            "url": { "raw": "{{base_url}}/api/v1/settings/photo", "host": ["{{base_url}}"], "path": ["api", "v1", "settings", "photo"] }
+          }
+        },
+        {
+          "name": "Upload Foto Profil Hotel",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "_method", "value": "PUT", "type": "text" },
+                { "key": "hotel_name", "value": "Aedo Hotel Syariah", "type": "text" },
+                { "key": "hotel_address", "value": "Jl. Contoh No. 1, Kota", "type": "text" },
+                { "key": "hotel_phone", "value": "0291-123456", "type": "text" },
+                { "key": "hotel_email", "value": "info@aedohotel.com", "type": "text" },
+                { "key": "default_check_in", "value": "14:00:00", "type": "text" },
+                { "key": "default_check_out", "value": "12:00:00", "type": "text" },
+                { "key": "tax_percentage", "value": "11", "type": "text" },
+                { "key": "min_dp_percentage", "value": "0", "type": "text" },
+                { "key": "payment_verification_enabled", "value": "true", "type": "text" },
+                { "key": "hotel_photo", "type": "file", "src": [] }
+              ]
+            },
             "url": { "raw": "{{base_url}}/api/v1/settings", "host": ["{{base_url}}"], "path": ["api", "v1", "settings"] }
           }
         }
@@ -899,6 +932,68 @@
             "method": "GET",
             "header": [{ "key": "Accept", "value": "application/json" }],
             "url": { "raw": "{{base_url}}/api/v1/reports/housekeeping", "host": ["{{base_url}}"], "path": ["api", "v1", "reports", "housekeeping"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Notifications",
+      "item": [
+        {
+          "name": "List Notifikasi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Respons notifikasi lengkap', () => {",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res).to.have.property('unread_count');",
+                  "  pm.expect(res.data).to.be.an('array');",
+                  "});",
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data[0]) pm.collectionVariables.set('notification_id', res.data[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/notifications", "host": ["{{base_url}}"], "path": ["api", "v1", "notifications"] }
+          }
+        },
+        {
+          "name": "Tandai Semua Notifikasi Dibaca",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/notifications/read-all", "host": ["{{base_url}}"], "path": ["api", "v1", "notifications", "read-all"] }
+          }
+        },
+        {
+          "name": "Tandai Satu Notifikasi Dibaca",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/notifications/{{notification_id}}/read", "host": ["{{base_url}}"], "path": ["api", "v1", "notifications", "{{notification_id}}", "read"] }
+          }
+        },
+        {
+          "name": "Hapus Satu Notifikasi",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/notifications/{{notification_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "notifications", "{{notification_id}}"] }
+          }
+        },
+        {
+          "name": "Hapus Semua Notifikasi",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/notifications", "host": ["{{base_url}}"], "path": ["api", "v1", "notifications"] }
           }
         }
       ]

@@ -5,7 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Services\AuditService;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class SettingController extends Controller
 {
@@ -27,7 +32,7 @@ class SettingController extends Controller
 
     public function show()
     {
-        return response()->json(['data' => Setting::instance()->only(self::PUBLIC_FIELDS)]);
+        return response()->json(['data' => $this->publicSettings(Setting::instance())]);
     }
 
     public function update(Request $request)
@@ -45,6 +50,15 @@ class SettingController extends Controller
             // Saklar verifikasi: aktif = transfer/QRIS menunggu admin,
             // nonaktif = langsung lunas saat dicatat.
             'payment_verification_enabled' => 'nullable|boolean',
+            'hotel_photo' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:2048',
+                'dimensions:max_width=2048,max_height=2048',
+                Rule::prohibitedIf(fn () => $request->boolean('remove_hotel_photo')),
+            ],
+            'remove_hotel_photo' => 'nullable|boolean',
         ], [
             'hotel_name.required'           => 'Nama hotel wajib diisi.',
             'hotel_email.email'             => 'Format email hotel tidak valid.',
@@ -55,6 +69,12 @@ class SettingController extends Controller
             'min_dp_percentage.numeric'     => 'Minimal DP harus berupa angka persen.',
             'min_dp_percentage.max'         => 'Minimal DP maksimal 100%.',
             'payment_verification_enabled.boolean' => 'Saklar verifikasi pembayaran harus benar/salah.',
+            'hotel_photo.image' => 'Foto hotel harus berupa gambar.',
+            'hotel_photo.mimes' => 'Format foto harus JPG, JPEG, PNG, atau WebP.',
+            'hotel_photo.max' => 'Ukuran foto maksimal 2 MB.',
+            'hotel_photo.dimensions' => 'Dimensi foto maksimal 2048 x 2048 piksel.',
+            'hotel_photo.prohibited' => 'Hapus foto lama terlebih dahulu sebelum mengunggah foto baru.',
+            'remove_hotel_photo.boolean' => 'Status penghapusan foto tidak valid.',
         ]);
 
         $setting = Setting::instance();
@@ -70,19 +90,76 @@ class SettingController extends Controller
             $validated['payment_verification_enabled'] = $request->boolean('payment_verification_enabled');
         }
 
-        $oldValues = $setting->only(array_keys($validated));
+        $oldPhotoPath = $setting->hotel_photo_path;
+        $newPhotoPath = null;
 
-        $setting->update($validated);
+        if ($request->hasFile('hotel_photo')) {
+            $newPhotoPath = $request->file('hotel_photo')->store('hotel-profile', 'local');
 
-        $newValues = $setting->only(array_keys($validated));
+            if (!$newPhotoPath) {
+                throw new Exception('Gagal menyimpan foto hotel.');
+            }
+        }
 
-        // Perubahan pajak/jam operasional = aksi penting yang wajib diaudit
-        // (AGENTS.md bagian 6 butir 10).
-        AuditService::log('settings.updated', $setting, $oldValues, $newValues, $request);
+        try {
+            DB::transaction(function () use ($request, $validated, $setting, $newPhotoPath): void {
+                if ($request->boolean('remove_hotel_photo')) {
+                    $validated['hotel_photo_path'] = null;
+                } elseif ($newPhotoPath) {
+                    $validated['hotel_photo_path'] = $newPhotoPath;
+                }
+
+                $oldValues = $setting->only(array_keys($validated));
+                $setting->update($validated);
+                $newValues = $setting->only(array_keys($validated));
+
+                AuditService::log('settings.updated', $setting, $oldValues, $newValues, $request);
+            });
+        } catch (Throwable $e) {
+            if ($newPhotoPath) {
+                Storage::disk('local')->delete($newPhotoPath);
+            }
+
+            throw $e;
+        }
+
+        if ($oldPhotoPath && $oldPhotoPath !== $newPhotoPath) {
+            Storage::disk('local')->delete($oldPhotoPath);
+        }
 
         return response()->json([
             'message' => 'Pengaturan berhasil diperbarui.',
-            'data'    => $setting->only(self::PUBLIC_FIELDS),
+            'data' => $this->publicSettings($setting->fresh()),
         ]);
+    }
+
+    public function photo()
+    {
+        $setting = Setting::instance();
+        $path = $setting->hotel_photo_path;
+
+        if (!$path || !str_starts_with($path, 'hotel-profile/') || !Storage::disk('local')->exists($path)) {
+            abort(404);
+        }
+
+        return Storage::disk('local')->response($path, 'hotel-profile', [
+            'Cache-Control' => 'public, max-age=300',
+        ]);
+    }
+
+    private function publicSettings(Setting $setting): array
+    {
+        return array_merge($setting->only(self::PUBLIC_FIELDS), [
+            'hotel_photo_url' => $this->photoUrl($setting),
+        ]);
+    }
+
+    private function photoUrl(Setting $setting): ?string
+    {
+        if (!$setting->hotel_photo_path) {
+            return null;
+        }
+
+        return url('/api/v1/settings/photo') . '?v=' . $setting->updated_at?->timestamp;
     }
 }

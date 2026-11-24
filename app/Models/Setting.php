@@ -11,6 +11,7 @@ class Setting extends Model
         'hotel_address',
         'hotel_phone',
         'hotel_email',
+        'hotel_photo_path',
         'default_check_in',
         'default_check_out',
         'tax_percentage',

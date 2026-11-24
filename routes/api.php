@@ -20,6 +20,7 @@ Route::prefix('v1')->group(function () {
     // throttle: membatasi percobaan login per IP (AGENTS.md bagian 9)
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
     Route::get('/settings', [SettingController::class, 'show']);
+    Route::get('/settings/photo', [SettingController::class, 'photo']);
 
     // Akun yang sudah dinonaktifkan langsung kehilangan akses, termasuk sesi yang masih terbuka
     // (AGENTS.md bagian 3: is_active = false tidak boleh memakai sistem).
@@ -140,6 +141,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
         Route::post('/notifications/{id}/read', [NotificationController::class, 'read']);
+        Route::delete('/notifications', [NotificationController::class, 'destroyAll']);
+        Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
         // Housekeeping
         Route::get('/housekeeping-tasks', [HousekeepingController::class, 'index']);
