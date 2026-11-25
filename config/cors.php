@@ -19,13 +19,14 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-      'https://frontend-aedo-hotel-kappa.vercel.app',
-    'https://frontend-aedo-hotel.vercel.app',
-    'https://frontend-aedo-hotel-git-master-yglfns-projects.vercel.app',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    ],
+    'allowed_origins' => array_values(array_filter([
+        env('FRONTEND_URL'),
+        'https://frontend-aedo-hotel-kappa.vercel.app',
+        'https://frontend-aedo-hotel.vercel.app',
+        'https://frontend-aedo-hotel-git-master-yglfns-projects.vercel.app',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ])),
 
     'allowed_origins_patterns' => [],
 
