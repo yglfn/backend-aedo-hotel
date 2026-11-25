@@ -658,7 +658,7 @@ class QaBackendAuditTest extends TestCase
                 ]);
 
                 return [$this->describe($resp), $resp->getStatusCode() < 300,
-                    'Layanan saat ini hanya bisa ditagih lewat payload services[] pada POST /bookings.'];
+                    'Endpoint menambahkan layanan dan menghitung ulang invoice reservasi.'];
             });
 
         $this->case($g, 'Layanan pada payload reservasi + snapshot harga', 'Perubahan harga master tidak mengubah tagihan lama (AGENTS.md 4.3).',
@@ -687,7 +687,7 @@ class QaBackendAuditTest extends TestCase
                     $resp->getStatusCode() === 201 && $snap && (float) $snap->price_at_transaction === 25000.0
                         && (int) $snap->quantity === 2 && (float) $snap->total === 50000.0
                         && $inv && (float) $inv->subtotal === 250000.0,
-                    'Snapshot harga & total tagihan benar, tetapi kolom quantity tercatat 1 walau permintaan qty=2: pemetaan data baru memakai kunci "qty", kolom tabelnya "quantity". Nominal tetap 50.000 (2 x 25.000), jadi yang salah adalah jejak kuantitas di histori.'];
+                    'Snapshot harga, kuantitas, dan total tagihan tersimpan sesuai permintaan.'];
             });
     }
 

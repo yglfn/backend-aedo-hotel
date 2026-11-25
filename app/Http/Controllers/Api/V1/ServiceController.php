@@ -9,9 +9,26 @@ use Illuminate\Http\Request;
 
 class ServiceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Service::paginate(15));
+        $query = Service::query();
+
+        if ($request->filled('search')) {
+            $term = '%' . trim((string) $request->input('search')) . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', $term)
+                  ->orWhere('unit', 'like', $term)
+                  ->orWhere('description', 'like', $term);
+            });
+        }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
+        return response()->json($query->latest()->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -25,6 +42,10 @@ class ServiceController extends Controller
         ]);
 
         $service = Service::create($validated);
+
+        AuditService::log('service.created', $service, [], $service->only([
+            'name', 'price', 'unit', 'description', 'is_active',
+        ]), $request);
 
         return response()->json(['data' => $service, 'message' => 'Layanan berhasil ditambahkan'], 201);
     }
@@ -44,7 +65,12 @@ class ServiceController extends Controller
             'is_active'   => 'boolean'
         ]);
 
+        $oldValues = $service->only(['name', 'price', 'unit', 'description', 'is_active']);
         $service->update($validated);
+
+        AuditService::log('service.updated', $service, $oldValues, $service->only([
+            'name', 'price', 'unit', 'description', 'is_active',
+        ]), $request);
 
         return response()->json(['data' => $service, 'message' => 'Layanan berhasil diperbarui']);
     }
@@ -71,9 +97,10 @@ class ServiceController extends Controller
      */
     public function activate(Request $request, Service $service)
     {
+        $oldValues = ['is_active' => $service->is_active];
         $service->update(['is_active' => true]);
 
-        AuditService::log('service.activated', $service, ['is_active' => false], ['is_active' => true], $request);
+        AuditService::log('service.activated', $service, $oldValues, ['is_active' => true], $request);
 
         return response()->json(['data' => $service, 'message' => 'Layanan berhasil diaktifkan']);
     }

@@ -134,6 +134,7 @@ class BookingService
                         'price_at_transaction' => $service->price,
                         'quantity' => $svc['qty'],
                         'total' => $total,
+                        'notes' => $svc['notes'] ?? null,
                     ];
                 }
             }
@@ -217,12 +218,19 @@ class BookingService
     public function addServices(Booking $booking, array $services): Booking
     {
         return DB::transaction(function () use ($booking, $services) {
-            if (in_array($booking->status->value, [BookingStatus::Cancelled->value, BookingStatus::CheckedOut->value], true)) {
+            $booking = Booking::whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+            $status = $booking->status instanceof BookingStatus
+                ? $booking->status->value
+                : $booking->status;
+
+            if (in_array($status, [BookingStatus::Cancelled->value, BookingStatus::CheckedOut->value], true)) {
                 throw new Exception('Layanan tidak dapat ditambahkan pada reservasi yang sudah selesai atau dibatalkan.');
             }
 
+            $previousInvoiceTotal = (float) ($booking->invoice?->total ?? $booking->total_price);
             $serviceIds = collect($services)->pluck('service_id')->unique()->values();
-            $serviceMap = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+            $serviceMap = Service::whereIn('id', $serviceIds)->lockForUpdate()->get()->keyBy('id');
+            $changes = [];
 
             foreach ($services as $item) {
                 $service = $serviceMap->get($item['service_id']);
@@ -231,12 +239,28 @@ class BookingService
                 }
 
                 $quantity = (int) $item['qty'];
-                $existing = $booking->bookingServices()->where('service_id', $service->id)->first();
+                $notes = trim((string) ($item['notes'] ?? ''));
+
+                // Harga master bisa berubah setelah transaksi pertama. Baris dengan harga
+                // berbeda dibuat terpisah supaya snapshot lama tidak dihitung ulang.
+                $existing = $booking->bookingServices()
+                    ->where('service_id', $service->id)
+                    ->where('price_at_transaction', $service->price)
+                    ->first();
+
                 if ($existing) {
                     $quantity += (int) $existing->quantity;
+                    $mergedNotes = $existing->notes;
+                    if ($notes !== '' && $notes !== $mergedNotes) {
+                        $mergedNotes = trim((string) $mergedNotes) !== ''
+                            ? $mergedNotes . ' | ' . $notes
+                            : $notes;
+                    }
+
                     $existing->update([
                         'quantity' => $quantity,
                         'total' => $service->price * $quantity,
+                        'notes' => $mergedNotes,
                     ]);
                 } else {
                     $booking->bookingServices()->create([
@@ -244,18 +268,41 @@ class BookingService
                         'price_at_transaction' => $service->price,
                         'quantity' => $quantity,
                         'total' => $service->price * $quantity,
+                        'notes' => $notes !== '' ? $notes : null,
                     ]);
                 }
+
+                $changes[] = [
+                    'service_id' => $service->id,
+                    'quantity_added' => (int) $item['qty'],
+                    'price_at_transaction' => $service->price,
+                ];
             }
 
             $invoice = $booking->invoice;
             if (!$invoice) {
                 $invoice = $this->invoiceService->createForBooking($booking);
             } else {
-                $this->invoiceService->recalculate($invoice);
+                $invoice = $this->invoiceService->recalculate($invoice);
             }
 
-            return $booking->fresh(['bookingServices.service', 'invoice']);
+            AuditService::log('booking.services_added', $booking, [
+                'invoice_total' => $previousInvoiceTotal,
+            ], [
+                'services' => $changes,
+                'invoice_total' => $invoice->total,
+            ]);
+
+            return $booking->fresh([
+                'customer',
+                'bookingRooms.room.roomType',
+                'bookingGuests',
+                'bookingServices.service',
+                'createdBy',
+                'invoice',
+                'payments.createdBy',
+                'payments.verifiedBy',
+            ]);
         });
     }
 

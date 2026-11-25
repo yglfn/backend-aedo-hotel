@@ -355,12 +355,15 @@ GET /api/v1/rooms/availability?check_in=2026-11-01&check_out=2026-11-03
 
 | Method | URL | Akses | Deskripsi |
 |---|---|---|---|
-| `GET` | `/api/v1/services` | Semua | List layanan (form reservasi butuh ini) |
+| `GET` | `/api/v1/services` | Semua | List layanan. Query: `search`, `is_active=1\|0`, `per_page` (1-100) |
 | `POST` | `/api/v1/services` | Admin | Tambah layanan |
 | `GET` | `/api/v1/services/{id}` | Semua | Detail layanan |
 | `PUT` / `PATCH` | `/api/v1/services/{id}` | Admin | Update |
 | `PATCH` | `/api/v1/services/{id}/activate` | Admin | Aktifkan kembali layanan |
 | `DELETE` | `/api/v1/services/{id}` | Admin | **Nonaktifkan** (`is_active = false`), baris tidak dihapus agar histori `booking_services` tetap valid |
+
+List layanan mengembalikan paginator Laravel (`data`, `total`, `current_page`, `per_page`).
+Form reservasi memakai `GET /api/v1/services?is_active=1&per_page=100`.
 
 ---
 
@@ -389,7 +392,7 @@ GET /api/v1/rooms/availability?check_in=2026-11-01&check_out=2026-11-03
 | `POST` | `/api/v1/bookings/{id}/check-in` | Semua | Proses check-in. Body opsional `{ "guests": [{ "name": "...", "ktp": "..." }] }` untuk melengkapi penghuni yang belum tercatat saat reservasi |
 | `POST` | `/api/v1/bookings/{id}/check-out` | Semua | Proses check-out |
 | `POST` | `/api/v1/bookings/{id}/cancel` | Semua | Batalkan reservasi (invoice ikut di-`void`) |
-| `POST` | `/api/v1/bookings/{id}/services` | — | ⚠ **Belum tersedia** (layanan hanya bisa dikirim saat membuat booking) |
+| `POST` | `/api/v1/bookings/{id}/services` | Semua | Tambah layanan pada reservasi `pending`, `confirmed`, atau `checked_in`; invoice dan total reservasi diperbarui otomatis |
 
 **Body buat reservasi:**
 ```json
@@ -405,9 +408,26 @@ GET /api/v1/rooms/availability?check_in=2026-11-01&check_out=2026-11-03
     { "name": "Siti Rahma", "is_primary": false }
   ],
   "discount_amount": 0,
-  "notes": "Minta kamar di lantai atas"
+  "notes": "Minta kamar di lantai atas",
+  "services": [
+    { "service_id": 1, "qty": 2, "notes": "Untuk dua orang" }
+  ]
 }
 ```
+
+**Menambahkan layanan setelah reservasi dibuat:**
+```json
+{
+  "services": [
+    { "service_id": 1, "qty": 2, "notes": "Untuk dua orang" }
+  ]
+}
+```
+
+- `qty` minimal 1; alias `quantity` juga diterima untuk kompatibilitas Postman lama.
+- Layanan harus aktif. Request pada reservasi `cancelled` atau `checked_out` ditolak `422`.
+- Harga disimpan sebagai snapshot. Jika harga master berubah, transaksi tambahan memakai baris snapshot baru agar tagihan lama tidak dihitung ulang.
+- Subtotal, pajak, total reservasi, dan status invoice diperbarui dalam satu transaksi. Invoice yang sebelumnya lunas kembali `draft` bila tagihan bertambah.
 
 **Aturan data tamu (penanggung jawab + penghuni):**
 

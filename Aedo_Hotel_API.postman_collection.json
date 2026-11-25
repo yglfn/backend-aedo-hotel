@@ -584,10 +584,11 @@
         },
         {
           "name": "Tambah Layanan ke Reservasi",
+          "description": "qty minimal 1. Alias quantity tetap diterima untuk kompatibilitas payload lama.",
           "request": {
             "method": "POST",
             "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"services\": [\n    { \"service_id\": {{service_id}}, \"quantity\": 2, \"notes\": \"Untuk 2 orang\" }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"services\": [\n    { \"service_id\": {{service_id}}, \"qty\": 2, \"notes\": \"Untuk 2 orang\" }\n  ]\n}" },
             "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/services", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "services"] }
           }
         },

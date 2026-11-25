@@ -14,6 +14,23 @@ class StoreBookingRequest extends FormRequest
         return true; // Autorisasi via middleware
     }
 
+    protected function prepareForValidation(): void
+    {
+        $services = $this->input('services');
+
+        if (!is_array($services)) {
+            return;
+        }
+
+        foreach ($services as $index => $service) {
+            if (is_array($service) && !array_key_exists('qty', $service) && array_key_exists('quantity', $service)) {
+                $services[$index]['qty'] = $service['quantity'];
+            }
+        }
+
+        $this->merge(['services' => $services]);
+    }
+
     public function rules(): array
     {
         return [
@@ -50,6 +67,7 @@ class StoreBookingRequest extends FormRequest
             'services' => ['nullable', 'array'],
             'services.*.service_id' => ['required_with:services', 'exists:services,id'],
             'services.*.qty' => ['required_with:services', 'integer', 'min:1'],
+            'services.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
 
@@ -67,6 +85,9 @@ class StoreBookingRequest extends FormRequest
             'guest_count.min' => 'Jumlah tamu minimal 1 orang.',
             'discount_amount.numeric' => 'Nilai diskon harus berupa angka.',
             'discount_amount.min' => 'Nilai diskon tidak boleh negatif.',
+            'services.*.service_id.required' => 'Layanan tambahan wajib dipilih.',
+            'services.*.qty.required' => 'Jumlah layanan wajib diisi.',
+            'services.*.qty.min' => 'Jumlah layanan minimal 1.',
         ];
     }
 

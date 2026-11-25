@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentStatus;
+use App\Enums\PaymentType;
 use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Setting;
@@ -59,11 +61,34 @@ class InvoiceService
             $tax      = ($subtotal - $discount) * $taxPct / 100;
             $total    = $subtotal - $discount + $tax;
 
+            $verifiedTotal = (float) $booking->payments()
+                ->where('status', PaymentStatus::Verified->value)
+                ->whereIn('type', [PaymentType::Dp->value, PaymentType::Final->value])
+                ->sum('amount');
+
+            $status = $invoice->status instanceof InvoiceStatus
+                ? $invoice->status->value
+                : $invoice->status;
+
+            // Layanan baru dapat menaikkan tagihan setelah invoice sebelumnya lunas.
+            // Status harus kembali draft agar kasir tidak menganggap sisa tambahan sudah dibayar.
+            if ($status === InvoiceStatus::Paid->value && $verifiedTotal + 0.01 < $total) {
+                $status = InvoiceStatus::Draft->value;
+            } elseif ($status !== InvoiceStatus::Paid->value
+                && $status !== InvoiceStatus::Void->value
+                && $total > 0
+                && $verifiedTotal + 0.01 >= $total) {
+                $status = InvoiceStatus::Paid->value;
+            }
+
+            $booking->update(['total_price' => $total]);
+
             $invoice->update([
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax'      => $tax,
                 'total'    => $total,
+                'status'   => $status,
             ]);
 
             return $invoice->fresh();

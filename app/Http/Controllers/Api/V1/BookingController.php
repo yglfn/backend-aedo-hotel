@@ -24,7 +24,14 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
-        $query = Booking::with(['customer', 'bookingRooms.room', 'bookingGuests', 'payments', 'invoice']);
+        $query = Booking::with([
+            'customer',
+            'bookingRooms.room',
+            'bookingGuests',
+            'bookingServices.service',
+            'payments',
+            'invoice',
+        ]);
 
         // status boleh satu nilai atau daftar terpisah koma (mis. pending,confirmed untuk tab check-in)
         if ($request->filled('status')) {
@@ -89,6 +96,8 @@ class BookingController extends Controller
                 'message' => 'Layanan reservasi berhasil ditambahkan.',
                 'data' => $updatedBooking,
             ]);
+        } catch (QueryException $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json([
                 'message' => 'Gagal menambahkan layanan reservasi.',
