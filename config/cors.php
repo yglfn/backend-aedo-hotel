@@ -1,5 +1,8 @@
 <?php
 
+$frontendUrl = env('FRONTEND_URL');
+$frontendOrigin = $frontendUrl ? rtrim($frontendUrl, '/') : null;
+
 return [
 
     /*
@@ -15,12 +18,13 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', '*'],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => array_values(array_filter([
-        env('FRONTEND_URL'),
+        $frontendOrigin,
+        'https://frontend-aedo-hotel.yogielfino.workers.dev',
         'https://frontend-aedo-hotel-kappa.vercel.app',
         'https://frontend-aedo-hotel.vercel.app',
         'https://frontend-aedo-hotel-git-master-yglfns-projects.vercel.app',
@@ -28,14 +32,18 @@ return [
         'http://127.0.0.1:5173',
     ])),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^https://.*\.workers\.dev$#',
+        '#^https://.*\.vercel\.app$#',
+    ],
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => ['*'],
 
-    'max_age' => 0,
+    'max_age' => 86400,
 
     'supports_credentials' => true,
 
 ];
+
