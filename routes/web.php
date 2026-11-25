@@ -11,12 +11,26 @@ Route::withoutMiddleware('web')->group(function () {
     });
 
     Route::get('/setup-seed', function () {
-        \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
-        return response()->json([
-            'status' => 'ok',
-            'message' => 'Database seeded successfully',
-            'users' => \App\Models\User::all(['id', 'name', 'email', 'role', 'is_active']),
-        ]);
+        try {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+            $seedOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Migration and seed completed successfully!',
+                'migrate_output' => $migrateOutput,
+                'seed_output' => $seedOutput,
+                'users' => \App\Models\User::all(['id', 'name', 'email', 'role', 'is_active']),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     });
 
     Route::get('/diagnostic', function () {
