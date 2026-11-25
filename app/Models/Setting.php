@@ -33,6 +33,15 @@ class Setting extends Model
      */
     public static function instance(): static
     {
-        return static::firstOrFail();
+        return static::firstOrCreate(
+            [],
+            [
+                'hotel_name' => 'Aedo Hotel Syariah',
+                'default_check_in' => '14:00:00',
+                'default_check_out' => '12:00:00',
+                'tax_percentage' => 11,
+                'payment_verification_enabled' => true,
+            ]
+        );
     }
 }
