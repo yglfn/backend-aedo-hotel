@@ -10,9 +10,12 @@ Route::withoutMiddleware('web')->group(function () {
         ]);
     });
 
-    Route::get('/healthz', function () {
+    Route::get('/setup-seed', function () {
+        \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
         return response()->json([
             'status' => 'ok',
+            'message' => 'Database seeded successfully',
+            'users' => \App\Models\User::all(['id', 'name', 'email', 'role', 'is_active']),
         ]);
     });
 

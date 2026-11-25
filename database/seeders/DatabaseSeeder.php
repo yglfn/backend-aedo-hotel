@@ -15,31 +15,38 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // 1. Setting
-        Setting::create([
-            'hotel_name' => 'Aedo Hotel Syariah',
-            'default_check_in' => '14:00:00',
-            'default_check_out' => '12:00:00',
-            'tax_percentage' => 11,
-            'payment_verification_enabled' => true,
-        ]);
+        Setting::firstOrCreate(
+            [],
+            [
+                'hotel_name' => 'Aedo Hotel Syariah',
+                'default_check_in' => '14:00:00',
+                'default_check_out' => '12:00:00',
+                'tax_percentage' => 11,
+                'payment_verification_enabled' => true,
+            ]
+        );
 
         // 2. Admin User
-        User::create([
-            'name' => 'Admin Utama',
-            'email' => 'admin@aedohotel.com',
-            'password' => Hash::make('password123'),
-            'role' => UserRole::Admin,
-            'is_active' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@aedohotel.com'],
+            [
+                'name' => 'Admin Utama',
+                'password' => Hash::make('password123'),
+                'role' => UserRole::Admin,
+                'is_active' => true,
+            ]
+        );
 
         // 3. Pegawai User
-        User::create([
-            'name' => 'Pegawai Satu',
-            'email' => 'pegawai@aedohotel.com',
-            'password' => Hash::make('password123'),
-            'role' => UserRole::Pegawai,
-            'is_active' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'pegawai@aedohotel.com'],
+            [
+                'name' => 'Pegawai Satu',
+                'password' => Hash::make('password123'),
+                'role' => UserRole::Pegawai,
+                'is_active' => true,
+            ]
+        );
 
         // 4. Room Types
         // Hanya data awal. Selanjutnya tipe kamar dikelola lewat menu "Tipe Kamar",
