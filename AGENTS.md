@@ -110,7 +110,9 @@ Laporan menuntut hal-hal ini tetapi belum ada di skema:
 
 **Booking:** `pending → confirmed → checked_in → checked_out`, dengan cabang `cancelled`.
 - `pending → confirmed`: (default) saat pegawai/admin mengonfirmasi, atau otomatis saat DP/pembayaran pertama berstatus `verified`.
-- `cancelled`: wajib `cancel_reason`, isi `cancelled_at`, kamar dibebaskan dari availability.
+- `cancelled`: wajib `cancel_reason`, isi `cancelled_at`, kamar dibebaskan dari availability. Invoice aktif di-`void`.
+  - **Manual:** `POST /bookings/{id}/cancel` dengan body `{ "cancel_reason": "..." }` (min 5, max 500 karakter). Hanya booking berstatus `pending` atau `confirmed` yang bisa dibatalkan. Booking `checked_in`, `checked_out`, atau `cancelled` tidak bisa dibatalkan.
+  - **Otomatis (no-show):** Scheduler `bookings:auto-cancel-no-show` berjalan tiap hari pukul 02:00. Semua booking `pending`/`confirmed` yang tanggal `check_in`-nya sudah lewat (< hari ini) dianggap *no-show* dan dibatalkan sistem. Alasan diisi otomatis, `user_id` di `audit_logs` = `null` (menandakan aksi sistem). Notifikasi ringkasan dikirim ke semua user aktif.
 - Booking yang sudah `checked_out` atau `cancelled` tidak boleh diubah, kecuali koreksi oleh admin yang tercatat di audit log.
 
 **Kamar:** 
@@ -244,7 +246,13 @@ cp .env.example .env && php artisan key:generate
 php artisan migrate --seed
 php artisan serve
 php artisan test
-php artisan schedule:work   # scheduler: backup DB
+php artisan schedule:work   # scheduler: backup DB + auto-cancel no-show + notifikasi harian
+
+# Jalankan manual / test auto-cancel tanpa benar-benar membatalkan:
+php artisan bookings:auto-cancel-no-show --dry-run
+
+# Jalankan manual dengan toleransi berbeda (mis. 0 jam, langsung setelah tengah malam):
+php artisan bookings:auto-cancel-no-show --grace-hours=0
 ```
 
 Environment variable: `APP_*` (termasuk `APP_TIMEZONE=Asia/Jakarta`), `DB_*`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, konfigurasi backup. Tidak ada variabel kredensial payment gateway — fiturnya sudah dihapus.

@@ -14,7 +14,24 @@ class CancelBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cancel_reason' => ['required', 'string', 'min:5'],
+            'cancel_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'cancel_reason.required' => 'Alasan pembatalan wajib diisi.',
+            'cancel_reason.string'   => 'Alasan pembatalan harus berupa teks.',
+            'cancel_reason.min'      => 'Alasan pembatalan minimal 5 karakter.',
+            'cancel_reason.max'      => 'Alasan pembatalan maksimal 500 karakter.',
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'cancel_reason' => 'alasan pembatalan',
         ];
     }
 }

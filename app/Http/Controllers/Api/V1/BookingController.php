@@ -203,7 +203,12 @@ class BookingController extends Controller
     public function cancel(CancelBookingRequest $request, Booking $booking)
     {
         try {
-            $updatedBooking = $this->bookingService->cancel($booking, $request->cancel_reason, $request->user()->id);
+            $validated = $request->validated();
+            $updatedBooking = $this->bookingService->cancel(
+                $booking,
+                $validated['cancel_reason'],
+                $request->user()->id
+            );
             return response()->json([
                 'message' => 'Reservasi berhasil dibatalkan.',
                 'data' => $updatedBooking

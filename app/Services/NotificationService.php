@@ -272,6 +272,23 @@ class NotificationService
         );
     }
 
+    /**
+     * Kirim notifikasi ringkasan auto-cancel no-show ke semua user aktif.
+     * Dipanggil oleh scheduler `bookings:auto-cancel-no-show` setelah selesai.
+     */
+    public function noShowAutoCancelled(int $count): void
+    {
+        $this->notifyRecipients(
+            $this->activeUsers(),
+            'booking',
+            'booking.auto_cancelled_no_show',
+            'Pembatalan otomatis no-show',
+            "{$count} reservasi dibatalkan otomatis karena tamu tidak datang (no-show).",
+            '/reservations?status=cancelled',
+            ['cancelled_count' => $count],
+        );
+    }
+
     public function suppressDailyReminders(User $user, iterable $notifications): void
     {
         foreach ($notifications as $notification) {
